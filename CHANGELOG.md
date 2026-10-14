@@ -2,6 +2,15 @@
 
 > This file is retained as a historical source. The authoritative consolidated record is `..\SYSTEM_REVISION_RECORD.md`.
 
+## 2026-10-15 - Department PPMP intake and Academic Affairs review
+
+- Added one annual CSE-based request or No PPMP response for each of CED, CBM, CAS, CCSICT, CCJE, IAT, and PS, using one account per department role.
+- Added department-scoped PPMP workspaces and an AA-only Department Wishlist collection. Department submissions route directly to AA.
+- Added immutable submitted snapshots and separate AA editable review copies. AA can save Draft, add/edit/remove copied rows, and mark Reviewed without changing the original or CSE catalog.
+- The annual collection becomes Ready to Submit after all seven departments respond and all submitted requests have Reviewed copies. A later AA edit resets its copy to Draft; no downstream submission target is introduced.
+- Added four department workflow tables. Render PostgreSQL startup creates only these tables if missing through a transaction/advisory-lock bootstrap, then runs normal read-only schema verification; other installations retain `python app.py --migrate-only`. Existing tables/data are not changed by the Render bootstrap. This implementation did not migrate or change local/production data.
+- Implemented and locally verified: focused workflow regression, Python compilation, Jinja validation, repeated additive-schema checks, and 32 headless Edge workflow/UI assertions passed with zero uncaught JavaScript errors; layout screenshots were inspected. The regression run executed 35 tests: 32 passed; the same three legacy UI assertion failures were reproduced on pre-revision GitHub baseline `da3e895`. The PDF-dependent test ran after PyPDF2 was installed. Production PostgreSQL deployment and startup bootstrap have not been observed.
+
 ## 2026-10-07 - SQLite default with MariaDB retained
 
 - Changed the default SQLAlchemy connection to a project-local SQLite file; `DATABASE_URL` and `DB_BACKEND=mariadb` remain available for MariaDB recovery.

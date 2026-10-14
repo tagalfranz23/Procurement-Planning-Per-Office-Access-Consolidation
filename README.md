@@ -8,6 +8,14 @@ Procurement creates an APP or APP (CSE) draft only from a non-empty, same-year c
 
 Registration creates a PENDING inactive account. A signed Login-page registration reference provides system-only Pending/Approved/Rejected status without approval email or SMS. The one-account/one-role database rule remains enforced.
 
+## Department PPMP and Academic Affairs
+
+CED, CBM, CAS, CCSICT, CCJE, IAT, and PS each use one approved department account. Each department selects items from the shared CSE Master List and submits one request per fiscal year directly to Academic Affairs, or records No PPMP for that year. A submitted request is read-only.
+
+Only AA has **Department Wishlist**, where it creates and edits a separate review copy for each submitted department PPMP. The annual collection is **Ready to Submit** when all seven departments have responded and every submitted PPMP copy is **Reviewed**. Editing a reviewed copy resets it to Draft. The collection retains separate department PPMPs and No PPMP responses; the next submission destination has not been specified.
+
+The revision adds four `department_ppmp_*` tables. On Render PostgreSQL, WSGI startup detects the built-in `RENDER=true` flag and creates only these four tables if missing, using a transaction and PostgreSQL advisory lock, then performs normal read-only schema verification. The current free service's Gunicorn command works without a paid pre-deploy step. This narrow bootstrap does not migrate existing tables or change existing PPMP, orders, consolidation, APP, catalog, or account data. Other installations retain `python app.py --migrate-only` after backup. See Render's [built-in environment variables](https://render.com/docs/environment-variables).
+
 ## Configure SQLite
 
 SQLite is the default. The database file must be on persistent storage and its directory must be writable by the application. Set `DATABASE_URL` explicitly when deployment uses a mounted persistent directory, for example:
@@ -48,7 +56,7 @@ Add these Web Service environment variables in the Render dashboard:
 | `FLASK_SECRET_KEY` | A unique, randomly generated secret. Do not use the development placeholder. |
 | `INITIAL_ADMIN_PASSWORD` | A private, strong password. Required only when initializing a new database without an existing Admin account. |
 
-The pre-deploy command applies the existing additive schema migrations. The WSGI entry point performs a read-only schema and connectivity check before serving requests. Do not use `--reset-database` for deployment or data migration. Import the backed-up production records into Render PostgreSQL and reconcile table counts and key workflows before directing users to the Render URL.
+The pre-deploy command applies the existing additive schema migrations. The WSGI entry point performs a read-only schema and connectivity check before serving requests, with the narrow Render PostgreSQL bootstrap for the four Department PPMP tables described above. Do not use `--reset-database` for deployment or data migration. Import the backed-up production records into Render PostgreSQL and reconcile table counts and key workflows before directing users to the Render URL.
 
 Render's free web services do not support persistent disks, and free PostgreSQL databases expire after 30 days. A service with an attached persistent disk cannot scale to multiple instances; a managed PostgreSQL database is the recommended relational-data option. See [Render's free instance limits](https://render.com/docs/free), [PostgreSQL guide](https://render.com/docs/postgresql), and [persistent disk limitations](https://render.com/docs/disks).
 
@@ -91,5 +99,4 @@ After every verified feature, fix, removal, workflow, permission, database, secu
 python scripts\generate_documentation.py
 ```
 
-See `..\SYSTEM_REVISION_RECORD.md` for the authoritative revision history, `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.md` for the editable complete feature manual, and `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.pdf` for its generated controlled copy. `CHANGELOG.md` remains a concise historical source.
-
+In this local archive, the authoritative revision history is `..\SYSTEM_REVISION_RECORD.md`, the editable complete feature manual is `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.md`, and its generated controlled copy is `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.pdf`. The GitHub deployment repository publishes these files under `docs/` with the same filenames. `CHANGELOG.md` remains a concise historical source.

@@ -71,11 +71,11 @@ class User(db.Model):
     # Operational roles, not module accounts. A role can carry permissions for
     # both PPMP and APP (for example PROCUREMENT, EO and BUDGET).
     ROLES = (
-        'ADMIN', 'ACCOUNTING', 'BIRD-C', 'BUDGET', 'CASHIER', 'CBAO', 'COA',
+        'ADMIN', 'ACCOUNTING', 'BIRD-C', 'BUDGET', 'CAS', 'CBM', 'CASHIER', 'CBAO', 'CCSICT', 'CCJE', 'CED', 'COA',
         'EXTENSION', 'FABLAB', 'FIC', 'GSO', 'GUIDANCE', 'EO', 'QA', 'AA',
-        'EAPRIL', 'HRMO/AFS', 'INFIRMARY', 'INFRA', 'LIBRARY', 'MIS',
+        'EAPRIL', 'HRMO/AFS', 'IAT', 'INFIRMARY', 'INFRA', 'LIBRARY', 'MIS',
         'NSTP/ROTC', 'OSAS', "PLANNING AND DEV'T WITH GAD", 'PROCUREMENT',
-        'RECORDS', 'REGISTRAR', 'RESEARCH', 'SOCIO', 'SPORTS', 'SSC',
+        'PS', 'RECORDS', 'REGISTRAR', 'RESEARCH', 'SOCIO', 'SPORTS', 'SSC',
         'SUPPLY', 'SWINE PROJECT', 'TKC', 'BAC CHAIRMAN',
     )
 
@@ -536,6 +536,200 @@ class WishlistItem(db.Model):
                 'unit': self.unit, 'quantity': float(self.quantity or 0), 'estimated_cost': float(self.estimated_cost or 0),
                 'total_cost': self.total_cost, 'remarks': self.remarks, 'status': self.status,
                 'created_at': self.created_at.isoformat() if self.created_at else None}
+
+
+class DepartmentPPMPSubmission(db.Model):
+    """Immutable annual department submission or its explicit No PPMP response."""
+    __tablename__ = 'department_ppmp_submissions'
+
+    STATUSES = ('Submitted', 'No PPMP')
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    department_code = db.Column(db.String(16), nullable=False)
+    fiscal_year = db.Column(db.SmallInteger, nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    notes = db.Column(Text, nullable=True)
+    submitted_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    submitted_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    submitter = db.relationship('User', foreign_keys=[submitted_by])
+    items = db.relationship(
+        'DepartmentPPMPSubmissionItem', back_populates='submission',
+        cascade='all, delete-orphan', lazy='select', order_by='DepartmentPPMPSubmissionItem.id',
+    )
+    review_copy = db.relationship(
+        'DepartmentPPMPReviewCopy', back_populates='submission', uselist=False,
+        cascade='all, delete-orphan', lazy='select',
+    )
+
+    __table_args__ = (
+        UniqueConstraint('department_code', 'fiscal_year', name='uq_department_ppmp_year'),
+        CheckConstraint("status IN ('Submitted','No PPMP')", name='ck_department_ppmp_submission_status'),
+    )
+
+    @property
+    def total_budget(self):
+        return sum((item.quantity or 0) * (item.estimated_unit_cost or 0) for item in self.items)
+
+    def to_dict(self, include_items=True, include_review_copy=True):
+        result = {
+            'id': self.id,
+            'department_code': self.department_code,
+            'fiscal_year': self.fiscal_year,
+            'status': self.status,
+            'notes': self.notes,
+            'submitted_by': self.submitted_by,
+            'submitter_name': self.submitter.full_name if self.submitter else '',
+            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+            'item_count': len(self.items),
+            'total_budget': float(self.total_budget or 0),
+        }
+        if include_items:
+            result['items'] = [item.to_dict() for item in self.items]
+        if include_review_copy:
+            result['review_copy'] = self.review_copy.to_dict() if self.review_copy else None
+        return result
+
+
+class DepartmentPPMPSubmissionItem(db.Model):
+    """Read-only item snapshot copied from the shared CSE Master List at submission."""
+    __tablename__ = 'department_ppmp_submission_items'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    submission_id = db.Column(
+        db.Integer, db.ForeignKey('department_ppmp_submissions.id', ondelete='CASCADE'), nullable=False,
+    )
+    master_item_id = db.Column(
+        db.Integer, db.ForeignKey('wishlist_items.id', ondelete='SET NULL'), nullable=True,
+    )
+    item_name = db.Column(Text, nullable=False)
+    category = db.Column(db.String(80), nullable=False)
+    unit = db.Column(db.String(60), nullable=False)
+    quantity = db.Column(DECIMAL(12, 2), nullable=False)
+    estimated_unit_cost = db.Column(DECIMAL(15, 2), nullable=False)
+    remarks = db.Column(Text, nullable=True)
+
+    submission = db.relationship('DepartmentPPMPSubmission', back_populates='items')
+
+    __table_args__ = (
+        UniqueConstraint('submission_id', 'master_item_id', name='uq_department_submission_master_item'),
+        CheckConstraint('quantity > 0', name='ck_department_submission_quantity'),
+        CheckConstraint('estimated_unit_cost >= 0', name='ck_department_submission_unit_cost'),
+    )
+
+    def to_dict(self):
+        quantity = self.quantity or 0
+        unit_cost = self.estimated_unit_cost or 0
+        return {
+            'id': self.id,
+            'master_item_id': self.master_item_id,
+            'item_name': self.item_name,
+            'category': self.category,
+            'unit': self.unit,
+            'quantity': float(quantity),
+            'estimated_unit_cost': float(unit_cost),
+            'total': float(quantity * unit_cost),
+            'remarks': self.remarks,
+        }
+
+
+class DepartmentPPMPReviewCopy(db.Model):
+    """AA-owned editable copy of one immutable department PPMP submission."""
+    __tablename__ = 'department_ppmp_review_copies'
+
+    STATUSES = ('Draft', 'Reviewed')
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    submission_id = db.Column(
+        db.Integer, db.ForeignKey('department_ppmp_submissions.id', ondelete='CASCADE'),
+        nullable=False, unique=True,
+    )
+    status = db.Column(db.String(16), nullable=False, default='Draft')
+    notes = db.Column(Text, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    submission = db.relationship('DepartmentPPMPSubmission', back_populates='review_copy')
+    creator = db.relationship('User', foreign_keys=[created_by])
+    reviewer = db.relationship('User', foreign_keys=[reviewed_by])
+    items = db.relationship(
+        'DepartmentPPMPReviewItem', back_populates='review_copy',
+        cascade='all, delete-orphan', lazy='select', order_by='DepartmentPPMPReviewItem.id',
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('Draft','Reviewed')", name='ck_department_ppmp_review_status'),
+    )
+
+    @property
+    def total_budget(self):
+        return sum((item.quantity or 0) * (item.estimated_unit_cost or 0) for item in self.items)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'submission_id': self.submission_id,
+            'status': self.status,
+            'notes': self.notes,
+            'created_by': self.created_by,
+            'created_by_name': self.creator.full_name if self.creator else '',
+            'reviewed_by': self.reviewed_by,
+            'reviewed_by_name': self.reviewer.full_name if self.reviewer else '',
+            'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'item_count': len(self.items),
+            'total_budget': float(self.total_budget or 0),
+            'items': [item.to_dict() for item in self.items],
+        }
+
+
+class DepartmentPPMPReviewItem(db.Model):
+    """AA-editable copy row; editing it never mutates its source submission or CSE item."""
+    __tablename__ = 'department_ppmp_review_items'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    review_copy_id = db.Column(
+        db.Integer, db.ForeignKey('department_ppmp_review_copies.id', ondelete='CASCADE'), nullable=False,
+    )
+    master_item_id = db.Column(
+        db.Integer, db.ForeignKey('wishlist_items.id', ondelete='SET NULL'), nullable=True,
+    )
+    item_name = db.Column(Text, nullable=False)
+    category = db.Column(db.String(80), nullable=False)
+    unit = db.Column(db.String(60), nullable=False)
+    quantity = db.Column(DECIMAL(12, 2), nullable=False)
+    estimated_unit_cost = db.Column(DECIMAL(15, 2), nullable=False)
+    remarks = db.Column(Text, nullable=True)
+    is_custom_item = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    review_copy = db.relationship('DepartmentPPMPReviewCopy', back_populates='items')
+
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='ck_department_review_quantity'),
+        CheckConstraint('estimated_unit_cost >= 0', name='ck_department_review_unit_cost'),
+    )
+
+    def to_dict(self):
+        quantity = self.quantity or 0
+        unit_cost = self.estimated_unit_cost or 0
+        return {
+            'id': self.id,
+            'master_item_id': self.master_item_id,
+            'item_name': self.item_name,
+            'category': self.category,
+            'unit': self.unit,
+            'quantity': float(quantity),
+            'estimated_unit_cost': float(unit_cost),
+            'total': float(quantity * unit_cost),
+            'remarks': self.remarks,
+            'is_custom_item': self.is_custom_item,
+        }
 
 
 class WishlistRequest(db.Model):

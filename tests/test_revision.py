@@ -156,6 +156,182 @@ class RevisionRulesTest(unittest.TestCase):
             db.session.commit()
         db.session.rollback()
 
+    def test_department_wishlist_routes_to_aa_and_review_copy_preserves_original(self):
+        departments = {
+            'CED': 'College of Education (CED)',
+            'CBM': 'College of Business and Management (CBM)',
+            'CAS': 'College of Arts and Sciences (CAS)',
+            'CCSICT': 'College of Computing Studies, Information and Communication Technology (CCSICT)',
+            'CCJE': 'College of Criminal Justice Education (CCJE)',
+            'IAT': 'Institute of Agricultural Technology (IAT)',
+            'PS': 'Polytechnic School (PS)',
+        }
+        department_users = {}
+        role_options = self.client.get('/api/auth/available-roles').get_json()
+        for code in departments:
+            self.assertIn(code, role_options['roles'])
+            self.assertIn(code, role_options['offices'])
+        registration = self.registration(
+            email='ced@isu.edu.ph', username='ced_department', role='CED', office='CED',
+        )
+        self.assertEqual(registration.status_code, 201, registration.get_json())
+        ced_user = User.query.filter_by(role='CED').one()
+        admin = User.query.filter_by(role='ADMIN').one()
+        with self.client.session_transaction() as session:
+            session['user_id'], session['role'] = admin.id, admin.role
+        approval = self.client.post(f'/api/admin/pending-users/{ced_user.id}/approve', json={})
+        self.assertEqual(approval.status_code, 200, approval.get_json())
+        self.assertIsNotNone(approval.get_json()['user']['college_id'])
+        department_users['CED'] = ced_user
+        for code, label in departments.items():
+            if code == 'CED':
+                continue
+            department_users[code] = User(
+                username=f'dept_{code.lower()}', full_name=label, email=f'{code.lower()}@isu.edu.ph',
+                password_hash='x', role=code, office=code,
+                account_status='ACTIVE', is_active=True,
+            )
+        aa = User(username='academic_affairs', full_name='Academic Affairs', email='aa@isu.edu.ph',
+                  password_hash='x', role='AA', office='AA', account_status='ACTIVE', is_active=True)
+        master_item = WishlistItem(
+            office='ADMIN', item_description='Bond paper A4', category='Office Supplies',
+            unit='ream', quantity=0, estimated_cost=250, status='Available',
+        )
+        db.session.add_all([*department_users.values(), aa, master_item])
+        db.session.commit()
+
+        def use_account(user):
+            with self.client.session_transaction() as session:
+                session.clear()
+                session['user_id'], session['role'] = user.id, user.role
+
+        use_account(department_users['CED'])
+        for quantity in ('0.001', '10000000000', 'NaN', '-1'):
+            invalid = self.client.post('/api/department-wishlist', json={
+                'fiscal_year': 2027, 'items': [{'master_item_id': master_item.id, 'quantity': quantity}],
+            })
+            self.assertEqual(invalid.status_code, 400, invalid.get_json())
+        response = self.client.post('/api/department-wishlist', json={
+            'fiscal_year': 2027,
+            'notes': 'CED annual request',
+            'items': [{'master_item_id': master_item.id, 'quantity': '2', 'remarks': 'For classrooms'}],
+        })
+        self.assertEqual(response.status_code, 201, response.get_json())
+        submitted = response.get_json()
+        self.assertEqual(submitted['status'], 'Submitted')
+        self.assertEqual(submitted['item_count'], 1)
+        self.assertEqual(self.client.post('/api/department-wishlist', json={
+            'fiscal_year': 2027,
+            'items': [{'master_item_id': master_item.id, 'quantity': '1'}],
+        }).status_code, 409)
+        self.assertEqual(PPMPOrder.query.count(), 0)
+        self.assertEqual(db.session.get(WishlistItem, master_item.id).status, 'Available')
+        self.assertEqual(self.client.get('/api/ppmp-orders').status_code, 403)
+
+        use_account(aa)
+        overview = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
+        self.assertFalse(overview['ready_to_submit'])
+        self.assertEqual(overview['department_count'], 7)
+        ced_entry = next(row for row in overview['departments'] if row['department_code'] == 'CED')
+        self.assertEqual(ced_entry['submission']['status'], 'Submitted')
+        self.assertEqual(ced_entry['review_copy'], None)
+
+        copy_response = self.client.post(
+            f"/api/department-wishlist/{submitted['id']}/review-copy", json={},
+        )
+        self.assertEqual(copy_response.status_code, 201, copy_response.get_json())
+        review_copy = copy_response.get_json()
+        self.assertEqual(review_copy['items'][0]['item_name'], 'Bond paper A4')
+        self.assertEqual(review_copy['items'][0]['quantity'], 2.0)
+        self.assertEqual(review_copy['notes'], 'CED annual request')
+        changed_item = dict(review_copy['items'][0], item_name='AA-edited paper', quantity='4', estimated_unit_cost='300')
+        update_response = self.client.patch(
+            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={
+                'notes': 'Reviewed and adjusted by AA', 'items': [changed_item], 'mark_reviewed': True,
+            },
+        )
+        self.assertEqual(update_response.status_code, 200, update_response.get_json())
+        self.assertEqual(update_response.get_json()['status'], 'Reviewed')
+        self.assertEqual(update_response.get_json()['items'][0]['item_name'], 'AA-edited paper')
+        self.assertEqual(db.session.get(WishlistItem, master_item.id).item_description, 'Bond paper A4')
+
+        use_account(department_users['CED'])
+        original = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()['submission']
+        self.assertEqual(original['items'][0]['item_name'], 'Bond paper A4')
+        self.assertEqual(original['items'][0]['quantity'], 2.0)
+        self.assertNotIn('review_copy', original)
+        self.assertEqual(self.client.post(
+            f"/api/department-wishlist/{submitted['id']}/review-copy", json={},
+        ).status_code, 403)
+        self.assertEqual(self.client.patch(
+            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={'notes': 'Unauthorized'},
+        ).status_code, 403)
+
+        use_account(department_users['CBM'])
+        other_department = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
+        self.assertIsNone(other_department['submission'])
+        self.assertNotIn('departments', other_department)
+
+        for code, user in department_users.items():
+            if code == 'CED':
+                continue
+            use_account(user)
+            no_ppmp = self.client.post('/api/department-wishlist', json={
+                'fiscal_year': 2027, 'no_ppmp': True,
+            })
+            self.assertEqual(no_ppmp.status_code, 201, no_ppmp.get_json())
+            self.assertEqual(no_ppmp.get_json()['status'], 'No PPMP')
+
+        use_account(aa)
+        ready = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
+        self.assertTrue(ready['ready_to_submit'])
+        self.assertEqual(ready['reported_count'], 7)
+        self.assertEqual(ready['submitted_count'], 1)
+        self.assertEqual(ready['no_ppmp_count'], 6)
+        self.assertEqual(ready['reviewed_count'], 1)
+
+        # Source text longer than legacy VARCHAR limits must remain reviewable.
+        long_name = 'Complete catalog specification ' * 20
+        changed_item['item_name'] = long_name
+        changed = self.client.patch(
+            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={'items': [changed_item]},
+        )
+        self.assertEqual(changed.status_code, 200, changed.get_json())
+        self.assertEqual(changed.get_json()['items'][0]['item_name'], long_name.strip())
+        self.assertEqual(changed.get_json()['status'], 'Draft')
+        self.assertFalse(self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()['ready_to_submit'])
+
+        # A malformed department assignment cannot gain the legacy office path.
+        self.assertEqual(application.permissions_for(User(role='CED', office='AA')), set())
+
+        admin = User.query.filter_by(role='ADMIN').one()
+        use_account(admin)
+        self.assertEqual(self.client.get('/api/department-wishlist?fiscal_year=2027').status_code, 403)
+
+    def test_department_schema_bootstrap_is_additive_and_repeatable(self):
+        from sqlalchemy import inspect
+
+        master = WishlistItem(office='ADMIN', item_description='Preserved catalog item',
+                              category='Office Supplies', unit='piece', quantity=0,
+                              estimated_cost=15, status='Available')
+        db.session.add(master)
+        db.session.commit()
+        original_id = master.id
+        workflow_tables = [
+            application.DepartmentPPMPReviewItem.__table__, application.DepartmentPPMPReviewCopy.__table__,
+            application.DepartmentPPMPSubmissionItem.__table__, application.DepartmentPPMPSubmission.__table__,
+        ]
+        db.metadata.drop_all(bind=db.engine, tables=workflow_tables)
+        original_tables = set(inspect(db.engine).get_table_names())
+        for _ in range(2):
+            application.ensure_department_wishlist_schema()
+            application.verify_database_schema()
+        self.assertEqual(set(inspect(db.engine).get_table_names()) - original_tables,
+                         {table.name for table in workflow_tables})
+        self.assertEqual(User.query.count(), 1)
+        self.assertEqual(WishlistItem.query.count(), 1)
+        self.assertEqual(db.session.get(WishlistItem, original_id).item_description, 'Preserved catalog item')
+
     def test_office_user_cannot_create_for_another_college(self):
         first = College(code='A', name='College A')
         second = College(code='B', name='College B')
