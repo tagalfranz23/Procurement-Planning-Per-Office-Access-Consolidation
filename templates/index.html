@@ -517,6 +517,8 @@ td.center{text-align:center}
   #ppmp-request-report-detail .ppmp-report-heading{flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center}
   #ppmp-request-report-detail .ppmp-report-types{gap:16px}
   #ppmp-request-report-detail .ppmp-report-type{color:#111;font-size:9pt}
+  #ppmp-request-report-detail .ppmp-report-type input{accent-color:var(--green);print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  #ppmp-request-report-detail .card-title{font-size:12pt;font-weight:700}
   #ppmp-request-report-detail .card-title,#ppmp-request-report-detail .report-identity strong{color:#111}
   #ppmp-request-report-detail .report-identity{grid-template-columns:1fr;gap:0;padding:3px 0}
   #ppmp-request-report-detail .report-identity div{padding:2px 0;border:0}
@@ -1068,7 +1070,7 @@ td.center{text-align:center}
     <div class="chart-card mt-12"><div class="chart-title">Item Trend by Month</div><div class="line-chart" id="report-order-trend"></div></div>
     <div class="card mt-12"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody id="report-records"><tr><td colspan="7">No submitted item records.</td></tr></tbody></table></div></div>
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
-      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. 1</span><div class="ppmp-report-types"><label class="ppmp-report-type"><input type="checkbox" checked>Indicative</label><label class="ppmp-report-type"><input type="checkbox">Final</label></div></div></div></div>
+      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. 1</span><div class="ppmp-report-types"><label class="ppmp-report-type"><input type="checkbox">Indicative</label><label class="ppmp-report-type"><input type="checkbox" checked>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="ppmp-request-report-wrap"><table class="ppmp-request-report-table"><thead><tr><th>General Description and Objective of the Project to be Procured</th><th>Types of the Project to be procured (Whether Goods, Infrastructure, and Consulting Services)</th><th>Quantity and Size of the Project to be Procured</th><th>Recommended Mode of Procurement</th><th>Pre-Procured conference, if applicable (Yes/No)</th><th>Start of Procurement Activity</th><th>End of Procurement Activity</th><th>Expected Delivery Implementation Period</th><th>Source of Funds</th><th>Estimated Budget / Authorized Budgetary Allocation (Php)</th><th>ATTACHED SUPPORTING DOCUMENTS</th><th>REMARKS</th></tr></thead><tbody id="ppmp-request-report-items"></tbody></table></div>
       <div class="card-body">
