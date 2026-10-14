@@ -1813,13 +1813,13 @@ async function loadSummary() {
 async function loadPPMPDashboard() {
   const data = await apiFetch(`${API}/dashboard/ppmp`);
   if (currentUser?.role === 'ADMIN') {
-  document.getElementById('stat-total-items').textContent = data.total_record_items || data.total_items || 0;
-  document.getElementById('stat-approved').textContent = data.status_counts?.Approved || 0;
-  document.getElementById('stat-pending').textContent = (data.status_counts?.Submitted || 0) + (data.status_counts?.['EO Review'] || 0) + (data.status_counts?.['Procurement Review'] || 0) + (data.wishlist_order_counts?.Submitted || 0) + (data.wishlist_order_counts?.['Pending Admin Approval'] || 0) + (data.wishlist_order_counts?.['Procurement Review'] || 0);
-  document.getElementById('stat-draft').textContent = data.status_counts?.Draft || 0;
-  document.getElementById('stat-returned').textContent = data.status_counts?.Returned || 0;
-  document.getElementById('stat-order-pending').textContent = data.order_pending || 0;
-  document.getElementById('stat-consolidation-ready').textContent = data.eligible_for_consolidation || 0;
+    document.getElementById('stat-total-items').textContent = data.total_record_items || data.total_items || 0;
+    document.getElementById('stat-approved').textContent = data.status_counts?.Approved || 0;
+    document.getElementById('stat-pending').textContent = (data.status_counts?.Submitted || 0) + (data.status_counts?.['EO Review'] || 0) + (data.status_counts?.['Procurement Review'] || 0) + (data.wishlist_order_counts?.Submitted || 0) + (data.wishlist_order_counts?.['Pending Admin Approval'] || 0) + (data.wishlist_order_counts?.['Procurement Review'] || 0);
+    document.getElementById('stat-draft').textContent = data.status_counts?.Draft || 0;
+    document.getElementById('stat-returned').textContent = data.status_counts?.Returned || 0;
+    document.getElementById('stat-order-pending').textContent = data.order_pending || 0;
+    document.getElementById('stat-consolidation-ready').textContent = data.eligible_for_consolidation || 0;
   }
   document.getElementById('ppmp-dashboard-records').innerHTML = data.recent_records?.length ? data.recent_records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name || 'Unassigned')}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td></tr>`).join('') : '<tr><td colspan="6">No PPMP documents available.</td></tr>';
   await loadDashboardWishlist(false);
