@@ -726,7 +726,7 @@ td.center{text-align:center}
   <!-- ══ ADMIN OVERVIEW ═════════════════════════════ -->
   {% if is_admin %}
   <section class="panel active" id="panel-dashboard">
-    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><button class="btn btn-ghost" onclick="loadAdminOverview()">Refresh</button></div>
+    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><button class="btn btn-primary" onclick="loadAdminOverview()">Refresh</button></div>
     <div class="workspace-grid">
       <article class="workspace-card" onclick="showPanel('ppmp-dashboard')"><div class="section-kicker">PPMP Workspace</div><h2>PPMP Dashboard</h2><p>Submitted office requests, reviews, wishlist items, and procurement readiness.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-ppmp-total">0</strong><span>PPMP Records</span></div><div class="workspace-metric"><strong id="admin-ppmp-actions">0</strong><span>Pending Actions</span></div></div></article>
       <article class="workspace-card" onclick="showPanel('app-dashboard')"><div class="section-kicker">APP Workspace</div><h2>APP Dashboard</h2><p>APP drafts, review stages, APP-CSE, final approvals, and consolidation sources.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-app-total">0</strong><span>APP Plans</span></div><div class="workspace-metric"><strong id="admin-app-actions">0</strong><span>For Approval</span></div></div></article>
@@ -831,7 +831,7 @@ td.center{text-align:center}
       <div class="stat-card navy"><div class="stat-value" id="app-stat-batches">0</div><div class="stat-label">Consolidation Batches</div><div class="stat-icon">CO</div></div>
     </div>
     <div class="card" id="app-order-consolidation-card" hidden>
-      <div class="card-header"><div><span class="card-title">PPMP Items Awaiting APP Consolidation</span><div class="text-xs text-muted">Procurement verifies and consolidates each submitted office item before Administrator review.</div></div><button class="btn btn-ghost btn-sm" type="button" onclick="loadAPPConsolidationQueue()">Refresh</button></div>
+      <div class="card-header"><div><span class="card-title">PPMP Items Awaiting APP Consolidation</span><div class="text-xs text-muted">Procurement verifies and consolidates each submitted office item before Administrator review.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="loadAPPConsolidationQueue()">Refresh</button></div>
       <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office / Requester</th><th>Fiscal Year</th><th>Items</th><th>Total</th><th>Stage</th><th>Actions</th></tr></thead><tbody id="app-order-consolidation-list"><tr><td colspan="7">No PPMP items are waiting for APP consolidation.</td></tr></tbody></table></div>
     </div>
     <div class="card"><div class="card-header"><span class="card-title">Recent APP Activity</span></div><div class="table-wrap"><table><thead><tr><th>Office</th><th>Fiscal Year</th><th>Type</th><th>Status</th></tr></thead><tbody id="app-dashboard-recent"><tr><td colspan="4">No APP records available.</td></tr></tbody></table></div></div>
@@ -839,7 +839,7 @@ td.center{text-align:center}
 
   <!-- ══ PPMP LIST ══════════════════════════════════ -->
   <section class="panel" id="panel-ppmp-requests">
-    <div class="page-header"><div><h1>PPMP Records &amp; Wishlist Requests</h1><p>Review PPMP documents separately from actual Wishlist requests and items.</p></div><button class="btn btn-ghost" type="button" onclick="loadPPMPRequests()">Refresh</button></div>
+    <div class="page-header"><div><h1>PPMP Records &amp; Wishlist Requests</h1><p>Review PPMP documents separately from actual Wishlist requests and items.</p></div><button class="btn btn-primary" type="button" onclick="loadPPMPRequests()">Refresh</button></div>
     <div class="card" data-permission="ppmp.request.create" id="submission-request-create-card">
       <div class="card-header"><span class="card-title">Request a PPMP from an Office</span></div>
       <div class="card-body"><div class="filter-row">
@@ -854,7 +854,7 @@ td.center{text-align:center}
   </section>
 
   <section class="panel" id="panel-apps">
-    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>One APP or APP (CSE) per office and fiscal year, sourced from approved consolidated PPMP.</p></div><button class="btn btn-ghost" type="button" onclick="loadApps()">Refresh</button></div>
+    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>One APP or APP (CSE) per office and fiscal year, sourced from approved consolidated PPMP.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
     <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">Create APP Draft from Consolidation</span></div><div class="card-body"><div class="app-create-note">This operational action belongs to Procurement. It creates the APP record and copies only legitimate PPMP values from the selected consolidation batch; incomplete APP-only fields remain for Procurement to complete.</div><div class="filter-row"><select class="filter-select" id="app-office"><option value="">Select office</option></select><input class="filter-input" id="app-year" type="number" min="2000" max="2100" placeholder="Fiscal year"><select class="filter-select" id="app-type"><option value="APP">APP</option><option value="APP_CSE">APP (CSE)</option></select><select class="filter-select" id="app-batch"><option value="">Consolidation batch</option></select><button class="btn btn-primary" type="button" onclick="createAPP(this)">Create Draft</button></div></div></div>
     <div class="card"><div class="card-header"><span class="card-title">APP Records</span><span class="text-xs text-muted">Admin and authorized APP roles inspect the same records</span></div><div class="table-wrap"><table><thead><tr><th>Office</th><th>Fiscal Year</th><th>Type</th><th>Sections</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Next Reviewer</th><th>Actions</th></tr></thead><tbody id="app-list"><tr><td colspan="9">Loading APP records…</td></tr></tbody></table></div></div>
     <div id="app-record-workspace" hidden>
@@ -869,7 +869,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-admin-approval" aria-labelledby="admin-approval-title">
     <div class="page-header">
       <div><h1 id="admin-approval-title">Account Approval</h1><p>Review new registrations before role access is activated.</p></div>
-      <button class="btn btn-ghost" type="button" onclick="refreshAccountAdministration()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="refreshAccountAdministration()">Refresh</button>
     </div>
     <div class="card"><div class="card-header"><span class="card-title">Pending Account Registrations</span></div><div class="card-body"><div class="approval-list" id="pending-user-list"><div class="loading"><div class="spinner"></div>Loading accounts...</div></div></div></div>
   </section>
@@ -879,7 +879,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-planning">
     <div class="page-header">
       <div><h1>PPMP Planning Documents</h1><p>Create and review the official 12-column planning document.</p></div>
-      <button class="btn btn-ghost" type="button" onclick="loadPPMPPlanning()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="loadPPMPPlanning()">Refresh</button>
     </div>
 
     <div class="card" data-permission="ppmp.record.create" id="ppmp-record-create-card">
@@ -1011,7 +1011,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-reports">
     <div class="page-header">
       <div><h1>REPORTS</h1><p>Review and generate PPMP reports using only records authorized for your account.</p></div>
-      <button class="btn btn-ghost" type="button" onclick="loadOrderReports()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="loadOrderReports()">Refresh</button>
     </div>
     {% if is_admin %}
     <div class="card">
