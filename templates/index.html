@@ -518,6 +518,95 @@ td.center{text-align:center}
   #ppmp-request-report-detail .ppmp-request-report-table tr{break-inside:avoid;page-break-inside:avoid}
   #ppmp-request-report-controls{display:none!important}
 }
+
+/* Cross-device layout adjustments for the existing dashboard and its controls. */
+@media(max-width:900px){
+  :root{--header-h:98px;--sidebar-w:0px}
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .topbar{
+    height:var(--header-h);min-height:var(--header-h);padding:6px 12px;
+    flex-direction:column;align-items:stretch;justify-content:center;gap:5px
+  }
+  .topbar-brand{min-width:0;gap:8px}
+  .topbar-brand>div:last-child{min-width:0;flex:1}
+  .topbar-title{font-size:13px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+  .topbar-sub{font-size:10px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+  .topbar-right{min-width:0;justify-content:space-between;gap:6px}
+  .sidebar{display:flex;width:min(280px,85vw);transform:translateX(-105%);top:var(--header-h);z-index:100}
+  body.sidebar-collapsed .sidebar{transform:translateX(-105%)}
+  body.sidebar-open .sidebar,body.sidebar-collapsed.sidebar-open .sidebar{transform:translateX(0)}
+  body.sidebar-open::before{
+    content:"";position:fixed;inset:var(--header-h) 0 0;z-index:99;
+    background:rgba(15,23,42,.38)
+  }
+  .main{width:auto;max-width:100%;min-width:0;margin-left:0;padding:16px}
+  body.sidebar-collapsed .main{margin-left:0}
+  .panel,.card,.card-body,.card-header,.page-header,.chart-grid,.stat-grid,
+  .workspace-grid,.management-form,.app-summary-grid,.app-two-column,
+  .form-grid,.ppmp-form-grid,.app-form-grid{min-width:0;max-width:100%}
+  .card-header{align-items:flex-start}
+  .card-title,.page-header h1,.page-header p,.card-body{overflow-wrap:anywhere}
+  .table-wrap,.app-table-wrap,.ppmp-request-report-wrap,.line-chart,.schema-viewer{
+    width:100%;max-width:100%;min-width:0;overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch
+  }
+  .ppmp-request-report-wrap,.app-table-wrap{max-width:100%}
+  .table-wrap table{max-width:none}
+  .filter-row,.action-row,.management-actions{min-width:0;max-width:100%;flex-wrap:wrap}
+  .filter-row>*{min-width:0;max-width:100%}
+  .report-identity{grid-template-columns:minmax(0,1fr)}
+  .workspace-metrics,.college-meta{flex-wrap:wrap}
+  .approval-account{align-items:flex-start;flex-wrap:wrap}
+  .approval-account>div:first-child{min-width:0}
+  .college-items-scroll{width:100%;max-width:100%;overflow:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .college-items-scroll table{min-width:620px}
+  #admin-activity-tracker-results .activity-tracker-tables{grid-template-columns:minmax(0,1fr)}
+  #admin-activity-tracker-results .activity-tracker-tables>.table-wrap{overflow-x:auto}
+  .modal-overlay{padding:10px}
+  .modal{max-height:calc(100dvh - 20px);min-width:0}
+  .modal-body{padding:16px}
+  .modal-footer{flex-wrap:wrap;padding:12px 16px}
+  .toast-container{left:12px;right:12px;bottom:12px}
+  .toast{width:100%;min-width:0;max-width:100%}
+}
+@media(max-width:600px){
+  :root{--header-h:98px}
+  .main{padding:12px}
+  .card-body{padding:12px}
+  .page-header{align-items:flex-start}
+  .page-header h1{font-size:18px}
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stat-card{min-width:0;padding:12px}
+  .stat-value{font-size:20px}
+  .workspace-grid,.app-summary-grid,.management-form{grid-template-columns:minmax(0,1fr)}
+  .filter-row{flex-direction:column;align-items:stretch}
+  .filter-row .filter-input,.filter-row .filter-select,.filter-row .unit-picker,
+  .filter-row>input,.filter-row>select,.filter-row>textarea{width:100%;min-width:0;max-width:100%}
+  .unit-picker{flex:1 1 auto}
+  .action-row,.management-actions{align-items:stretch}
+  .management-actions .btn,.action-row .btn{max-width:100%;white-space:normal}
+  .activity-tracker-dropdown{right:0;max-width:calc(100vw - 24px)}
+  #admin-activity-tracker-results .activity-tracker-tables{gap:10px}
+  #admin-activity-tracker-results .activity-tracker-tables>.table-wrap{overflow-x:auto}
+  #admin-activity-tracker-results .activity-tracker-tables table{width:100%;min-width:560px;max-width:none;table-layout:auto}
+  .report-identity{padding:10px}
+  .ppmp-report-export-menu{max-width:calc(100vw - 24px)}
+  .profile-panel{max-height:calc(100dvh - var(--header-h) - 12px);overflow-y:auto}
+  .menu-toggle,.profile-toggle,.notif-btn,.btn{min-height:40px}
+  .menu-toggle,.notif-btn{min-width:40px}
+  .nav-item{min-height:40px}
+  .modal-title{font-size:15px}
+}
+@media(max-width:360px){
+  .topbar{padding-left:8px;padding-right:8px}
+  .topbar-brand{gap:6px}
+  .topbar-logo{width:32px;height:32px;font-size:13px}
+  .topbar-title{font-size:12px}
+  .topbar-sub{font-size:9px}
+  .topbar-right{gap:4px}
+  .fiscal-badge,.ws-badge{font-size:10px}
+  .profile-toggle{padding:6px 8px}
+}
 </style>
 </head>
 <body class="sidebar-collapsed"
@@ -1806,7 +1895,7 @@ async function renderConsolidation() {
           ${Object.entries(c.by_mode).slice(0,3).map(([m,v]) => `<span>${m.substring(0,20)}: ₱${fmtK(v)}</span>`).join(' · ')}
         </div>
         <div class="sep"></div>
-        <div style="max-height:200px;overflow-y:auto">
+        <div class="college-items-scroll" style="max-height:200px;overflow-y:auto">
           <table style="width:100%;font-size:11px;border-collapse:collapse">
             <thead><tr style="background:var(--gray-100)">
               <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--gray-600)">Description</th>
@@ -2419,7 +2508,7 @@ function showPanel(id, el) {
   if (id === 'ppmp-planning') loadPPMPPlanning();
   if (id === 'apps') loadApps();
   if (id === 'activity-log') loadActivityLog();
-  if (window.matchMedia('(max-width: 600px)').matches) closeSidebar();
+  if (window.matchMedia('(max-width: 900px)').matches) closeSidebar();
 }
 
 async function legacyLoadPPMPRequests() {
@@ -3219,7 +3308,7 @@ async function transitionAPP(id,action,button){let note='';if(action==='return'|
 
 function toggleSidebar() {
   const toggle = document.getElementById('menu-toggle');
-  if (window.matchMedia('(max-width: 600px)').matches) {
+  if (window.matchMedia('(max-width: 900px)').matches) {
     const isOpen = document.body.classList.toggle('sidebar-open');
     toggle.setAttribute('aria-expanded', String(isOpen));
     toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
@@ -3236,6 +3325,13 @@ function closeSidebar() {
   toggle.setAttribute('aria-expanded', 'false');
   toggle.setAttribute('aria-label', 'Open menu');
 }
+
+document.addEventListener('click', event => {
+  if (window.matchMedia('(max-width: 900px)').matches &&
+      document.body.classList.contains('sidebar-open') && event.target === document.body) {
+    closeSidebar();
+  }
+});
 
 // ─────────────────────────────────────────────
 // FORMAT HELPERS
