@@ -979,11 +979,11 @@ td.center{text-align:center}
         <table id="wishlist-table">
           <thead>
             <tr>
-              <th>Item</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Status</th><th>Action</th>
+              <th>Item</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th>{% if is_admin %}<th>Status</th>{% endif %}<th>Action</th>
             </tr>
           </thead>
           <tbody id="wishlist-list">
-            <tr><td colspan="6">No CSE Master List entries are available.</td></tr>
+            <tr><td colspan="{% if is_admin %}6{% else %}5{% endif %}">No CSE Master List entries are available.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2591,8 +2591,9 @@ async function loadWishlist(showLoading = false) {
       ? `<div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="editWishlistItem(${item.id})">Edit</button><button class="btn btn-danger btn-sm" type="button" onclick="deleteWishlistItem(${item.id},this)">Delete</button></div>`
       : '<span class="text-xs text-muted">Locked by request</span>') :
       (item.status === 'Available' ? `<div class="management-actions"><input class="filter-input" id="master-quantity-${item.id}" type="number" min="0.01" value="1" style="min-width:76px;width:76px"><button class="btn btn-primary btn-sm" onclick="addMasterOrderItem(${item.id},this)">Add Item</button></div>` : '<span class="text-xs text-muted">Unavailable</span>');
-    return `<tr><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td><td>${escapeHtml(item.status)}</td><td>${action}</td></tr>`;
-  }).join('') : '<tr><td colspan="6">No CSE Master List entries are available.</td></tr>';
+    const statusCell = currentUser.role === 'ADMIN' ? `<td>${escapeHtml(item.status)}</td>` : '';
+    return `<tr><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td>${statusCell}<td>${action}</td></tr>`;
+  }).join('') : `<tr><td colspan="${currentUser.role === 'ADMIN' ? 6 : 5}">No CSE Master List entries are available.</td></tr>`;
 }
 
 async function loadDashboardWishlist(showLoading = false) {
