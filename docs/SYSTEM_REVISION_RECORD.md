@@ -56,6 +56,15 @@ Do not describe a requested or partial feature as complete without adding verifi
 
 # 2. Revision history
 
+## 2026-10-15 - Local Department PPMP schema activation
+
+**Status:** Activated and verified on the local SQLite database after the original implementation.
+
+- Created and verified an SQLite online backup of `ppmp/ppmp.sqlite` at `ppmp/backups/ppmp_before_department_schema_20261015_013250_261181.sqlite` before activation.
+- Ran the existing `ensure_department_wishlist_schema()` routine to create exactly the four missing `department_ppmp_*` tables. Broader migrations were not run; the new tables are empty.
+- Per-table SHA-256 row fingerprints confirmed that all 160 existing rows across 27 tables exactly matched the pre-activation backup. SQLite `quick_check` and `initialize_database(apply_migrations=False)` both passed.
+- No application behavior was changed, no accounts or demo rows were created, and no remote database was touched. The implementation-stage notes below remain historical statements about that earlier work.
+
 ## 2026-10-15 - Department PPMP intake and Academic Affairs review collection
 
 **Status:** Implemented and locally verified, subject to the three confirmed pre-existing legacy UI test failures recorded below. Production PostgreSQL deployment has not been observed.

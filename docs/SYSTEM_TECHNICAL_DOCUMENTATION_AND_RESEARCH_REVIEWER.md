@@ -3,7 +3,7 @@
 **System:** Web-Based Procurement Management System  
 **Institution:** Isabela State University – Cauayan City  
 **Current revision date:** 2026-10-15  
-**Document version:** 2026.10.15-1  
+**Document version:** 2026.10.15-2  
 **Status basis:** Implemented source with verification evidence recorded per revision. The new Department PPMP workflow is locally verified through isolated backend, additive-schema, and Edge browser checks, subject to three confirmed pre-existing legacy UI test failures. Production PostgreSQL deployment has not been observed.  
 **Current account baseline:** One permanent active Administrator is preserved; later approved operational accounts may exist and remain role-scoped.  
 **Detailed historical record:** `SYSTEM_REVISION_RECORD.md`
@@ -492,6 +492,10 @@ The Markdown source is authoritative for editing. The PDF is a generated control
 This local archive keeps the master revision record, living Markdown and generated PDF beside the `ppmp` directory. The GitHub deployment repository publishes the same filenames under `docs/`; the application source remains at the repository root.
 
 ## 17. Verification Record
+
+### 2026-10-15 Local Department PPMP schema activation
+
+Following the original implementation, the active local `ppmp/ppmp.sqlite` was backed up using SQLite online backup to `ppmp/backups/ppmp_before_department_schema_20261015_013250_261181.sqlite`. The existing `ensure_department_wishlist_schema()` routine created exactly the four missing department workflow tables, which remain empty. Per-table SHA-256 row fingerprints verified the backup and confirmed preservation of all 160 existing rows across 27 tables. SQLite `quick_check` and read-only startup verification through `initialize_database(apply_migrations=False)` both passed. No broader migrations, application behavior changes, account/demo-row creation, or remote database changes occurred. Implementation-stage statements below refer to the earlier implementation and isolated checks.
 
 ### 2026-10-15 Department PPMP revision
 

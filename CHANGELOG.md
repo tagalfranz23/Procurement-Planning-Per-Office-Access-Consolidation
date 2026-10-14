@@ -2,6 +2,12 @@
 
 > This file is retained as a historical source. The authoritative consolidated record is `..\SYSTEM_REVISION_RECORD.md`.
 
+## 2026-10-15 - Local Department PPMP schema activation
+
+- Backed up local `ppmp.sqlite` using SQLite online backup to `backups/ppmp_before_department_schema_20261015_013250_261181.sqlite`, then used the existing `ensure_department_wishlist_schema()` routine to create only the four missing department tables. The new tables remain empty.
+- Verified the backup and preservation of all 160 existing rows across 27 tables using per-table SHA-256 row fingerprints. SQLite `quick_check` and `initialize_database(apply_migrations=False)` passed.
+- This subsequent local activation changed no application behavior, created no accounts/demo rows, ran no broader migrations, and touched no remote database. The original implementation notes below retain their historical context.
+
 ## 2026-10-15 - Department PPMP intake and Academic Affairs review
 
 - Added one annual CSE-based request or No PPMP response for each of CED, CBM, CAS, CCSICT, CCJE, IAT, and PS, using one account per department role.
