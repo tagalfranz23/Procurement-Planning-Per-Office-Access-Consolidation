@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 The application supports Render PostgreSQL through `DATABASE_URL`. The URL is normalized to the Psycopg 3 SQLAlchemy driver. Keep the active source database and a verified backup until the production data migration has been completed and checked; provisioning a new Render database creates a schema but does not copy local records.
 
-In Render, create a paid Web Service and a managed PostgreSQL database in the same region. Set the Web Service root directory to `ppmp`, then configure:
+In Render, create a paid Web Service and a managed PostgreSQL database in the same region. Leave the Web Service root directory blank because the GitHub repository root contains `app.py` and `requirements.txt`, then configure:
 
 | Setting | Value |
 | --- | --- |
@@ -92,3 +92,4 @@ python scripts\generate_documentation.py
 ```
 
 See `..\SYSTEM_REVISION_RECORD.md` for the authoritative revision history, `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.md` for the editable complete feature manual, and `..\SYSTEM_TECHNICAL_DOCUMENTATION_AND_RESEARCH_REVIEWER.pdf` for its generated controlled copy. `CHANGELOG.md` remains a concise historical source.
+
