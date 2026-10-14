@@ -797,6 +797,7 @@ td.center{text-align:center}
       </div>
     </div>
 
+    {% if is_admin %}
     <div class="stat-grid" id="stat-cards">
       <div class="stat-card blue"><div class="stat-value" id="stat-total-items">—</div><div class="stat-label">Total PPMP Items</div><div class="stat-icon">📋</div></div>
       <div class="stat-card gold"><div class="stat-value" id="stat-approved">—</div><div class="stat-label">Approved Requests</div><div class="stat-icon">✅</div></div>
@@ -806,6 +807,7 @@ td.center{text-align:center}
       <div class="stat-card orange"><div class="stat-value" id="stat-order-pending">0</div><div class="stat-label">Pending Requests</div><div class="stat-icon">RQ</div></div>
       <div class="stat-card green"><div class="stat-value" id="stat-consolidation-ready">0</div><div class="stat-label">Ready to Consolidate</div><div class="stat-icon">CO</div></div>
     </div>
+    {% endif %}
     <div class="card">
       <div class="card-header"><span class="card-title">Recent PPMP Documents</span><button class="btn btn-ghost btn-sm" type="button" onclick="showPanel('ppmp-planning')">Open Documents</button></div>
       <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Wishlist Rows</th><th>Total Budget</th><th>Status</th></tr></thead><tbody id="ppmp-dashboard-records"><tr><td colspan="6">No PPMP documents available.</td></tr></tbody></table></div>
@@ -1810,6 +1812,7 @@ async function loadSummary() {
 
 async function loadPPMPDashboard() {
   const data = await apiFetch(`${API}/dashboard/ppmp`);
+  if (currentUser?.role === 'ADMIN') {
   document.getElementById('stat-total-items').textContent = data.total_record_items || data.total_items || 0;
   document.getElementById('stat-approved').textContent = data.status_counts?.Approved || 0;
   document.getElementById('stat-pending').textContent = (data.status_counts?.Submitted || 0) + (data.status_counts?.['EO Review'] || 0) + (data.status_counts?.['Procurement Review'] || 0) + (data.wishlist_order_counts?.Submitted || 0) + (data.wishlist_order_counts?.['Pending Admin Approval'] || 0) + (data.wishlist_order_counts?.['Procurement Review'] || 0);
@@ -1817,6 +1820,7 @@ async function loadPPMPDashboard() {
   document.getElementById('stat-returned').textContent = data.status_counts?.Returned || 0;
   document.getElementById('stat-order-pending').textContent = data.order_pending || 0;
   document.getElementById('stat-consolidation-ready').textContent = data.eligible_for_consolidation || 0;
+  }
   document.getElementById('ppmp-dashboard-records').innerHTML = data.recent_records?.length ? data.recent_records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name || 'Unassigned')}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td></tr>`).join('') : '<tr><td colspan="6">No PPMP documents available.</td></tr>';
   await loadDashboardWishlist(false);
   return data;
