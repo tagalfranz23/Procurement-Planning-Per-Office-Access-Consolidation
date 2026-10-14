@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="ui-revision" content="infinity-auth-v2-20260910">
+  <title>ISU Procurement Portal</title>
+  <link rel="icon" type="image/jpeg" href="/static/isu-seal.jpg">
+  <style>
+    :root{--green:#246827;--blue:#2563eb;--ink:#13202b;--muted:#6b7280;--red:#b42318;--border:#cad5ca}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Arial,sans-serif;color:var(--ink);background:#f7faf7}
+    .shell{width:min(100% - 32px,450px);padding:28px;background:#fff;border-radius:18px;box-shadow:0 12px 45px #173c1a18;text-align:center}.seal{width:72px}.view{display:none}.view.active{display:block}
+    h1{font-size:18px;white-space:nowrap;margin:12px 0 4px}h2{margin:12px 0}.subtitle{color:var(--muted);margin:0 0 16px}
+    .field{margin:12px 0;text-align:left}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:5px}.field input,.field select{width:100%;padding:11px;border:1px solid var(--border);border-radius:9px;background:#fff}.field input:focus,.field select:focus{outline:3px solid #2563eb22;border-color:var(--blue)}
+    .password-field{display:flex;gap:6px}.password-field input{flex:1}.reveal{width:44px;border:1px solid var(--border);border-radius:9px;background:#f8fafc;cursor:pointer;font-size:16px}
+    .submit,.back,.link{border:0;cursor:pointer}.submit{width:100%;padding:11px;border-radius:22px;background:var(--green);color:#fff;font-weight:700}.submit:disabled{opacity:.55}.back,.link{background:none;color:var(--green);font-weight:700}.back{display:block;padding:0;margin-bottom:8px}.message{min-height:18px;margin:10px;color:var(--red);font-size:13px}.message.success{color:var(--green)}.links{margin-top:14px;color:var(--muted);font-size:13px}
+    .notice{padding:11px 12px;border-radius:9px;background:#eef7ee;color:#315b33;font-size:12px;line-height:1.5;text-align:left;margin:12px 0}.notice.pending{background:#fff7dc;color:#765a00;border:1px solid #f0d77b}.notice.approved{background:#e8f8ed;color:#166534;border:1px solid #9bd5ac}
+    .loading{display:none;position:fixed;inset:0;place-items:center;padding:24px;background:linear-gradient(145deg,#f8fff8ee,#edf5ffee);backdrop-filter:blur(6px);z-index:20}.loading.visible{display:grid}.loading-panel{width:min(100%,330px);padding:30px 28px;border:1px solid #dbe7df;border-radius:22px;background:#fffffff2;box-shadow:0 24px 70px #173c1a2e}.infinity-loop{--loop-color:var(--green);--loop-accent:var(--blue);width:150px;margin:0 auto 12px}.infinity-loop svg{display:block;width:100%;overflow:visible}.infinity-loop-track,.infinity-loop-runner,.infinity-loop-spark{fill:none;stroke-linecap:round;stroke-linejoin:round}.infinity-loop-track{stroke:#dbe9df;stroke-width:7}.infinity-loop-runner{stroke:var(--loop-color);stroke-width:7;stroke-dasharray:22 78;animation:infinityTravel 1.55s linear infinite}.infinity-loop-spark{stroke:var(--loop-accent);stroke-width:3;stroke-dasharray:5 95;animation:infinityTravel 1.55s linear infinite reverse}.loading p{margin:6px 0 0;color:#24442a;font-size:14px;font-weight:700}@keyframes infinityTravel{to{stroke-dashoffset:-100}}@media(prefers-reduced-motion:reduce){.infinity-loop-runner,.infinity-loop-spark{animation-duration:3s}}
+    .dialog-backdrop{display:none;position:fixed;inset:0;z-index:40;align-items:center;justify-content:center;padding:20px;background:#0f172a99}.dialog-backdrop.open{display:flex}.dialog{width:min(100%,430px);padding:26px;border-radius:16px;background:#fff;text-align:center;box-shadow:0 24px 65px #0005}.dialog-icon{width:54px;height:54px;margin:0 auto 12px;display:grid;place-items:center;border-radius:50%;background:#dcfce7;color:#15803d;font-size:28px;font-weight:800}.dialog h2{margin:0 0 10px}.dialog p{color:var(--muted);font-size:14px;line-height:1.55}.dialog .submit{margin-top:14px}.status-action{margin-top:8px}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <img class="seal" src="/static/isu-seal.jpg" alt="ISU seal">
+    <h1>Isabela State University – Cauayan Campus</h1>
+    <p class="subtitle">Project Procurement Management Plan System</p>
+
+    <section id="login-view" class="view active">
+      <div class="notice pending" id="approval-banner" hidden></div>
+      <form id="login-form">
+        <div class="field"><label for="username">Username</label><input id="username" autocomplete="username" required></div>
+        <div class="field"><label for="password">Password</label><div class="password-field"><input id="password" type="password" autocomplete="current-password" required><button class="reveal" type="button" data-password="password" aria-label="Show password">👁</button></div></div>
+        <label><input id="remember" type="checkbox"> Remember me</label>
+        <button class="submit" type="submit">Log In</button>
+        <div class="message" id="login-message" role="alert"></div>
+      </form>
+      <div class="links"><button class="link" type="button" onclick="showView('forgot-view')">Forgot Password?</button></div>
+      <div class="links status-action"><button class="link" type="button" onclick="checkRegistrationStatus(false)">Check Account Status</button></div>
+      <div class="links">Need an account? <button class="link" type="button" onclick="openRegister()">Register</button></div>
+    </section>
+
+    <section id="forgot-view" class="view">
+      <button class="back" type="button" onclick="showView('login-view')">← Back to login</button>
+      <h2>Forgot Password</h2>
+      <div class="notice">Email delivery is still being configured. Submitting this form does not create an Administrator approval request.</div>
+      <form id="forgot-form"><div class="field"><label for="forgot-email">Registered email</label><input id="forgot-email" type="email" autocomplete="email" required></div><button class="submit" type="submit">Check Recovery Availability</button><div class="message" id="forgot-message"></div></form>
+      <div class="links"><button class="link" type="button" onclick="openResetView()">I already have a reset code</button></div>
+    </section>
+
+    <section id="reset-view" class="view">
+      <button class="back" type="button" onclick="showView('forgot-view')">← Back</button>
+      <h2>Reset Password</h2>
+      <div class="notice">Enter a previously issued one-time reset code. Codes expire after 15 minutes and can only be used once.</div>
+      <form id="reset-form">
+        <div class="field"><label for="reset-email">Registered email</label><input id="reset-email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="reset-code">One-time reset code</label><input id="reset-code" autocomplete="one-time-code" required></div>
+        <div class="field"><label for="reset-password">New password (8+ characters)</label><div class="password-field"><input id="reset-password" type="password" autocomplete="new-password" minlength="8" required><button class="reveal" type="button" data-password="reset-password" aria-label="Show password">👁</button></div></div>
+        <div class="field"><label for="reset-confirm">Confirm new password</label><div class="password-field"><input id="reset-confirm" type="password" autocomplete="new-password" minlength="8" required><button class="reveal" type="button" data-password="reset-confirm" aria-label="Show password">👁</button></div></div>
+        <button class="submit" type="submit">Set New Password</button><div class="message" id="reset-message"></div>
+      </form>
+    </section>
+
+    <section id="register-view" class="view">
+      <button class="back" type="button" onclick="showView('login-view')">← Back to login</button>
+      <h2>Create Account</h2>
+      <form id="register-form">
+        <div class="field"><label for="full-name">Full name</label><input id="full-name" autocomplete="name" required></div>
+        <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="register-username">Username</label><input id="register-username" autocomplete="username" required></div>
+        <div class="field"><label for="office">Office</label><select id="office" required><option value="">Select Office</option></select></div>
+        <div class="field"><label for="role">Role</label><select id="role" required><option value="">Select Role</option></select></div>
+        <div class="field"><label for="register-password">Password (8+ characters)</label><div class="password-field"><input id="register-password" type="password" autocomplete="new-password" minlength="8" required><button class="reveal" type="button" data-password="register-password" aria-label="Show password">👁</button></div></div>
+        <div class="field"><label for="register-confirm">Confirm password</label><div class="password-field"><input id="register-confirm" type="password" autocomplete="new-password" minlength="8" required><button class="reveal" type="button" data-password="register-confirm" aria-label="Show password">👁</button></div></div>
+        <button class="submit" type="submit">Register</button><div class="message" id="register-message" role="alert"></div>
+      </form>
+    </section>
+  </main>
+
+  <div class="loading" id="loading" aria-live="polite" aria-busy="false"><div class="loading-panel"><div class="infinity-loop" aria-hidden="true"><svg preserveAspectRatio="xMidYMid meet" viewBox="0 0 142 80"><path d="M18 40C18 17 43 12 59 28L83 52C99 68 124 63 124 40S99 12 83 28L59 52C43 68 18 63 18 40" pathLength="100" class="infinity-loop-track"/><path d="M18 40C18 17 43 12 59 28L83 52C99 68 124 63 124 40S99 12 83 28L59 52C43 68 18 63 18 40" pathLength="100" class="infinity-loop-runner"/><path d="M18 40C18 17 43 12 59 28L83 52C99 68 124 63 124 40S99 12 83 28L59 52C43 68 18 63 18 40" pathLength="100" class="infinity-loop-spark"/></svg></div><p id="loading-text">Loading…</p></div></div>
+  <div class="dialog-backdrop" id="status-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="dialog"><div class="dialog-icon" id="dialog-icon">✓</div><h2 id="dialog-title">Registration Successful</h2><p id="dialog-message"></p><button class="submit" type="button" id="dialog-action">Continue to Login</button></div></div>
+
+  <script>
+    const $=id=>document.getElementById(id),registrationKey='isu-registration-reference',registrationStateKey='isu-registration-last-status';
+    const AUTH_LOADING_DURATION_MS = 1_000;
+    function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));if(id==='login-view')$('login-message').textContent=''}
+    function busy(on,text='Loading…'){$('loading-text').textContent=text;$('loading').classList.toggle('visible',on);$('loading').setAttribute('aria-busy',String(on));document.querySelectorAll('button[type=submit]').forEach(b=>b.disabled=on)}
+    function beginTimedAuthLoading(){const startedAt=performance.now();return{wait:async()=>{const remaining=Math.max(0,AUTH_LOADING_DURATION_MS-(performance.now()-startedAt));if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining))},stop:()=>{}}}
+    async function send(path,payload){const c=new AbortController(),t=setTimeout(()=>c.abort(),30000);try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload),signal:c.signal}),d=await r.json();if(!r.ok){const error=new Error(d.error||'Request failed.');error.data=d;throw error}return d}catch(e){if(e.name==='AbortError')throw new Error('The request is taking longer than expected. Please try again.');throw e}finally{clearTimeout(t)}}
+    function showDialog(title,message,kind='success',actionLabel='Continue to Login'){$('dialog-title').textContent=title;$('dialog-message').textContent=message;$('dialog-icon').textContent=kind==='pending'?'⌛':kind==='error'?'!':'✓';$('dialog-icon').style.background=kind==='error'?'#fee2e2':kind==='pending'?'#fff7dc':'#dcfce7';$('dialog-action').textContent=actionLabel;$('status-dialog').classList.add('open')}
+    function closeDialog(){const title=$('dialog-title').textContent;$('status-dialog').classList.remove('open');if(title==='Registration Successful'||title==='Account Approved!')$('approval-banner').hidden=true;showView('login-view')}
+    $('dialog-action').onclick=closeDialog;
+    document.querySelectorAll('.reveal').forEach(button=>button.onclick=()=>{const input=$(button.dataset.password),visible=input.type==='text';input.type=visible?'password':'text';button.textContent=visible?'👁':'🙈';button.setAttribute('aria-label',visible?'Show password':'Hide password')});
+    async function openRegister(){showView('register-view');$('register-message').textContent='';try{const r=await fetch('/api/auth/available-roles',{credentials:'same-origin'}),d=await r.json();$('office').innerHTML='<option value="">Select Office</option>'+d.offices.map(x=>`<option value="${x}">${x}</option>`).join('');const options=d.role_options||d.roles.map(name=>({name,available:true}));$('role').innerHTML='<option value="">Select Role</option>'+options.map(x=>`<option value="${x.name}" ${x.available?'':'disabled'}>${x.name}${x.available?'':' — Unavailable'}</option>`).join('')}catch(e){$('register-message').textContent='Could not load the configured roles and offices.'}}
+    function openResetView(){if($('forgot-email').value)$('reset-email').value=$('forgot-email').value;showView('reset-view')}
+    function displayApprovalBanner(status,message){const banner=$('approval-banner');banner.hidden=false;banner.className='notice '+(status==='ACTIVE'?'approved':'pending');banner.innerHTML=`<strong>${status==='ACTIVE'?'Account Approved':'Account '+status.charAt(0)+status.slice(1).toLowerCase()}</strong><br>${message}`}
+    async function checkRegistrationStatus(automatic=true){const token=localStorage.getItem(registrationKey);if(!token){if(!automatic)showDialog('Registration Reference Not Found','Use the same browser where you completed registration, or contact the System Administrator.','error','Back to Login');return}try{const d=await send('/api/auth/registration-status',{registration_token:token}),previous=localStorage.getItem(registrationStateKey);localStorage.setItem(registrationStateKey,d.account_status);if(d.account_status==='ACTIVE'){if(previous!=='ACTIVE')displayApprovalBanner(d.account_status,d.message);else $('approval-banner').hidden=true}else if(d.account_status==='PENDING'){if(automatic)$('approval-banner').hidden=true;else displayApprovalBanner(d.account_status,d.message)}else displayApprovalBanner(d.account_status,d.message);if(d.account_status==='ACTIVE'&&(previous!=='ACTIVE'||!automatic))showDialog('Account Approved!',d.message,'success','Login Now');else if(!automatic)showDialog(d.account_status==='PENDING'?'Account Pending':'Account Status',d.message,d.account_status==='PENDING'?'pending':'error','Back to Login')}catch(error){if(!automatic)showDialog('Unable to Check Status',error.message,'error','Back to Login')}}
+    $('login-form').onsubmit=async e=>{e.preventDefault();busy(true,'Authenticating and loading your dashboard…');const authLoading=beginTimedAuthLoading();try{await send('/api/auth/login',{username:$('username').value,password:$('password').value,remember_me:$('remember').checked});await authLoading.wait();location.assign('/')}catch(error){authLoading.stop();$('login-message').textContent=error.message;if(error.data&&error.data.account_status)displayApprovalBanner(error.data.account_status,error.message);busy(false)}};
+    $('forgot-form').onsubmit=async e=>{e.preventDefault();busy(true,'Checking recovery availability…');try{const d=await send('/api/auth/forgot-password',{email:$('forgot-email').value});$('forgot-message').className='message success';$('forgot-message').textContent=d.message;$('reset-email').value=$('forgot-email').value}catch(error){$('forgot-message').className='message';$('forgot-message').textContent=error.message}finally{busy(false)}};
+    $('reset-form').onsubmit=async e=>{e.preventDefault();busy(true,'Updating your password…');try{const d=await send('/api/auth/reset-password',{email:$('reset-email').value,code:$('reset-code').value,password:$('reset-password').value,password_confirmation:$('reset-confirm').value});$('reset-message').className='message success';$('reset-message').textContent=d.message;e.target.reset();setTimeout(()=>showView('login-view'),1200)}catch(error){$('reset-message').className='message';$('reset-message').textContent=error.message}finally{busy(false)}};
+    $('register-form').onsubmit=async e=>{e.preventDefault();const names=$('full-name').value.trim().split(/\s+/),first=names.shift(),last=names.pop()||first;if($('register-password').value!==$('register-confirm').value){$('register-message').textContent='The password confirmation does not match.';return}busy(true,'Submitting your registration…');try{const d=await send('/api/auth/register',{first_name:first,last_name:last,middle_name:names.join(' '),email:$('email').value,username:$('register-username').value,password:$('register-password').value,password_confirmation:$('register-confirm').value,office:$('office').value,role:$('role').value});localStorage.setItem(registrationKey,d.registration_token);localStorage.setItem(registrationStateKey,'PENDING');e.target.reset();showView('login-view');displayApprovalBanner('PENDING','Your registration was successful. Please wait for the System Administrator to approve your account before attempting to log in.');showDialog('Registration Successful','Your account has been created and is waiting for Administrator approval. You cannot log in until it has been approved.','success','Continue to Login');setTimeout(closeDialog,4000)}catch(error){$('register-message').className='message';$('register-message').textContent=error.message}finally{busy(false)}};
+    checkRegistrationStatus(true);
+  </script>
+</body>
+</html>
