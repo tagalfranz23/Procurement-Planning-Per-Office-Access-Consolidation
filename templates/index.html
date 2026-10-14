@@ -957,7 +957,7 @@ td.center{text-align:center}
       <div class="table-wrap mt-12"><table><thead><tr><th>Item</th><th>Source</th><th>Quantity</th><th>Unit Cost</th><th>Total</th><th>Action</th></tr></thead><tbody id="order-draft-list"><tr><td colspan="6">Select a CSE Master List entry or add another item below.</td></tr></tbody></table></div>
       <div class="management-actions mt-12"><button class="btn btn-primary" id="submit-order-button" onclick="submitPPMPOrder(this)" disabled>Submit PPMP Request</button></div>
     </div></div>
-    <div class="card"><div class="card-header"><span class="card-title">Add other items not included in the CSE Master list</span></div><div class="card-body"><div class="filter-row"><input class="filter-input" id="custom-item-name" placeholder="Item name"><input class="filter-input" id="custom-item-description" placeholder="Description"><select class="filter-select" id="custom-item-category" aria-label="Category"><option value="">Select Category</option><option value="Goods">Goods</option><option value="Infrastructure">Infrastructure</option><option value="Consulting Services">Consulting Services</option></select><input class="filter-input" id="custom-item-unit" placeholder="Unit"><input class="filter-input" id="custom-item-quantity" type="number" min="0.01" placeholder="Quantity"><input class="filter-input" id="custom-item-cost" type="number" min="0" placeholder="Estimated unit price"><button class="btn btn-primary" onclick="addCustomOrderItem(this)">Add Item</button></div><p class="text-xs text-muted mt-8">This item belongs only to this request and is not added to the CSE Master List.</p></div></div>
+    <div class="card"><div class="card-header"><span class="card-title">Add other items not included in the CSE Master list</span></div><div class="card-body"><div class="filter-row"><input class="filter-input" id="custom-item-name" placeholder="Item name"><select class="filter-select" id="custom-item-category" aria-label="Category"><option value="">Select Category</option><option value="Goods">Goods</option><option value="Infrastructure">Infrastructure</option><option value="Consulting Services">Consulting Services</option></select><input class="filter-input" id="custom-item-unit" placeholder="Unit"><input class="filter-input" id="custom-item-quantity" type="number" min="0.01" placeholder="Quantity"><input class="filter-input" id="custom-item-cost" type="number" min="0" placeholder="Estimated unit price"><button class="btn btn-primary" onclick="addCustomOrderItem(this)">Add Item</button></div><p class="text-xs text-muted mt-8">This item belongs only to this request and is not added to the CSE Master List.</p></div></div>
     {% endif %}
 
     <div class="card">
@@ -2706,7 +2706,6 @@ function addCustomOrderItem(button) {
   const item = {
     client_id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     item_name: document.getElementById('custom-item-name').value.trim(),
-    description: document.getElementById('custom-item-description').value.trim(),
     category: document.getElementById('custom-item-category').value.trim(),
     unit: document.getElementById('custom-item-unit').value.trim(),
     quantity: +document.getElementById('custom-item-quantity').value,
@@ -2717,7 +2716,7 @@ function addCustomOrderItem(button) {
     return showToast('Complete all unlisted item fields with valid values.', 'PPMP Items', 'warning');
   }
   orderDraftItems.push(item);
-  ['custom-item-name','custom-item-description','custom-item-category','custom-item-unit','custom-item-quantity','custom-item-cost'].forEach(id => document.getElementById(id).value = '');
+  ['custom-item-name','custom-item-category','custom-item-unit','custom-item-quantity','custom-item-cost'].forEach(id => document.getElementById(id).value = '');
   renderOrderDraft();
   showToast('Unlisted item added only to Current PPMP Items.', 'PPMP Items', 'success');
 }
