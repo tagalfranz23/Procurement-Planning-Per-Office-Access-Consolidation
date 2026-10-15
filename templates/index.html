@@ -1368,6 +1368,8 @@ let ppmpRecords = [];
 let ppmpSubmissionRequests = [];
 let wishlistOrders = [];
 let selectedPPMPRecordId = null;
+let ppmpRecordOpenRequest = 0;
+let pendingPPMPRecordId = null;
 let appPlans = [];
 let appMetadata = {};
 let selectedAPPId = null;
@@ -2946,11 +2948,14 @@ async function saveWishlistOrderComment(button) {
 
 async function loadPPMPPlanning() {
   if (!document.getElementById('ppmp-record-list')) return;
+  const openRequest = ppmpRecordOpenRequest;
+  const openingRecord = pendingPPMPRecordId && pendingPPMPRecordId === selectedPPMPRecordId;
   const [records, requests, orders] = await Promise.all([
     apiFetch(`${API}/ppmp-records`, { loadingMessage: 'Loading PPMP Wishlist records...' }),
     apiFetch(`${API}/ppmp-requests`, { showLoading: false }),
     apiFetch(`${API}/ppmp-orders`, { showLoading: false }),
   ]);
+  if (openingRecord || (pendingPPMPRecordId && pendingPPMPRecordId === selectedPPMPRecordId) || openRequest !== ppmpRecordOpenRequest) return;
   ppmpRecords = records;
   ppmpSubmissionRequests = requests;
   wishlistOrders = orders;
@@ -2970,10 +2975,32 @@ async function loadPPMPPlanning() {
   renderPPMPRecordWorkspace();
 }
 
-function selectPPMPRecord(recordId) {
-  selectedPPMPRecordId = recordId;
-  renderPPMPRecordWorkspace();
-  document.getElementById('ppmp-record-workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+async function selectPPMPRecord(recordId) {
+  const selectedId = Number(recordId);
+  if (!Number.isSafeInteger(selectedId) || selectedId <= 0) return;
+  const requestId = ++ppmpRecordOpenRequest;
+  selectedPPMPRecordId = selectedId;
+  pendingPPMPRecordId = selectedId;
+  const workspace = document.getElementById('ppmp-record-workspace');
+  workspace.hidden = true;
+  try {
+    const record = await apiFetch(`${API}/ppmp-records/${selectedId}`, { loadingMessage: 'Opening PPMP document...' });
+    if (requestId !== ppmpRecordOpenRequest || selectedPPMPRecordId !== selectedId) return;
+    if (!record || record.id !== selectedId) throw new Error('The requested PPMP document could not be loaded.');
+    const recordIndex = ppmpRecords.findIndex(row => row.id === selectedId);
+    if (recordIndex === -1) ppmpRecords.push(record);
+    else ppmpRecords[recordIndex] = record;
+    pendingPPMPRecordId = null;
+    renderPPMPRecordWorkspace();
+    document.getElementById('ppmp-record-item-list').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (error) {
+    if (requestId !== ppmpRecordOpenRequest || selectedPPMPRecordId !== selectedId) return;
+    pendingPPMPRecordId = null;
+    workspace.hidden = true;
+    showToast(error.message, 'PPMP Document', 'error');
+  } finally {
+    if (requestId === ppmpRecordOpenRequest) pendingPPMPRecordId = null;
+  }
 }
 
 function openPPMPRecord(recordId) {
@@ -2983,7 +3010,7 @@ function openPPMPRecord(recordId) {
 
 function renderPPMPRecordWorkspace() {
   const workspace = document.getElementById('ppmp-record-workspace');
-  const record = ppmpRecords.find(row => row.id === selectedPPMPRecordId);
+  const record = pendingPPMPRecordId !== selectedPPMPRecordId && ppmpRecords.find(row => row.id === selectedPPMPRecordId);
   workspace.hidden = !record;
   if (!record) return;
   const editable = currentPermissions.includes('ppmp.record.create') && record.prepared_by === currentUser.id && ['Draft', 'Returned'].includes(record.status);
