@@ -50,15 +50,43 @@ Do not describe a requested or partial feature as complete without adding verifi
 - Consolidation: Approved PPMP → persisted consolidation batch/source links → APP draft.
 - APP/APP-CSE: Procurement → BAC Chairman → EO → Budget → Admin Approval → Finalized.
 - Optional surveys: EO creates and targets selected colleges; selected colleges may respond.
-- Department PPMP: one annual CSE-based response from each of CED, CBM, CAS, CCSICT, CCJE, IAT, and PS goes directly to Academic Affairs. AA prepares a separate editable review copy for each submitted department PPMP. The annual collection is Ready to Submit after all seven departments submit or report No PPMP and every submitted copy is Reviewed.
+- The dedicated department-to-AA annual intake/review workflow added earlier on 2026-10-15 has been withdrawn. AA uses its normal PPMP features; existing department accounts, role codes, and office identity are retained.
 
 ---
 
 # 2. Revision history
 
+## 2026-10-15 - Department Wishlist workflow removal
+
+**Status:** Implemented and locally verified, subject to three legacy UI assertion failures reproduced on the exact pre-removal baseline `f498b89`. Render deployment has not been observed.
+
+### Requested removal and scope
+
+- Removed the added Department Wishlist / Department PPMP sidebar, dashboard panel, annual response/catalog/review-copy UI, browser state, loaders, and handlers.
+- Removed the three dedicated department intake/review API handlers and their helpers and exclusive `ppmp.department_wishlist.*` permissions. AA and retained college roles use the existing normal `OFFICE_PERMISSIONS` fallback.
+- Removed the Render startup routine that created department tables and removed those tables from the normal required-schema checks.
+- AA's ordinary PPMP access and existing account, role, office, PPMP, CSE, order, consolidation, APP, reporting, notification, and authentication features remain in scope for preservation. This is a targeted removal rather than a broad revert to an older revision.
+
+### Data and deployment
+
+- Preserved all four existing `department_ppmp_*` tables and any rows already stored in them. Historical model definitions are retained for record preservation, with the active workflow serializers removed; these tables are excluded from new schema creation. No table drop, row deletion, schema migration, database reset, or local/remote data update is part of this removal.
+- Retained department accounts, role codes, and office identity. Removed workflow access does not delete structural users or offices.
+- Normal WSGI startup verifies its required schema without creating department tables. This revision requires no database migration or cleanup.
+
+### Documentation and evidence
+
+- Updated the living manual, README, and changelog to describe the removal as current behavior. The implementation and local activation entries below remain historical and are explicitly superseded.
+- Python compilation of `app.py`, `models.py`, and `wsgi.py` passed; both Jinja templates validated.
+- The full regression suite ran 35 tests: 32 passed, three legacy UI assertions failed, and there were no errors or skips. The same activity-markup, Login-timer, and Available Reports assertion failures were reproduced on the exact current pre-removal baseline `f498b89`.
+- Two replacement removal regressions and the final migration assertion passed. They confirmed all three retired API paths return 404 for AA, Administrator, and CED with GET/POST/PATCH; AA/college permissions use normal `OFFICE_PERMISSIONS`; archived rows remain unchanged; startup and migration succeed without retired tables and do not recreate them.
+- Headless Edge passed 105 checks across 12 roles: AA, the seven retained college roles, Cashier, Procurement, EO, and Administrator. Checks exercised AA's normal CSE item selection and PPMP submission, profile/navigation/requests/reports/activity, Administrator accounts, and APP screens. There were no retired API calls or uncaught JavaScript exceptions. The browser harness used an isolated in-memory database and disabled only the unused optional Socket.IO CDN dependency to avoid a network stall; product source was unchanged by that harness adjustment.
+- Read-only local database fingerprints were identical before and after removal for all 31 table schemas and all 223 records. Normal startup and SQLite `quick_check` passed. No live schema/data changes were made.
+- Source AST comparison confirmed that no shared API route body or decorator changed. Shared-function changes were limited to permission fallback and startup/migration/reset detachment of the retired workflow. Local verification does not establish Render deployment success.
+- Regenerated the controlled PDF from manual version `2026.10.15-3`. It contains 19 pages with extractable text, correct title metadata, the current removal marker and verification results, and is newer than the Markdown source.
+
 ## 2026-10-15 - Local Department PPMP schema activation
 
-**Status:** Activated and verified on the local SQLite database after the original implementation.
+**Status:** Historical activation, verified at that time. The workflow was subsequently withdrawn by the Department Wishlist workflow removal above; existing tables and records are preserved.
 
 - Created and verified an SQLite online backup of `ppmp/ppmp.sqlite` at `ppmp/backups/ppmp_before_department_schema_20261015_013250_261181.sqlite` before activation.
 - Ran the existing `ensure_department_wishlist_schema()` routine to create exactly the four missing `department_ppmp_*` tables. Broader migrations were not run; the new tables are empty.
@@ -67,7 +95,7 @@ Do not describe a requested or partial feature as complete without adding verifi
 
 ## 2026-10-15 - Department PPMP intake and Academic Affairs review collection
 
-**Status:** Implemented and locally verified, subject to the three confirmed pre-existing legacy UI test failures recorded below. Production PostgreSQL deployment has not been observed.
+**Status:** Superseded by the Department Wishlist workflow removal above. The following records the prior implementation and its local verification, subject to the three confirmed pre-existing legacy UI test failures recorded below. Production PostgreSQL deployment was not observed.
 
 ### Approved workflow
 

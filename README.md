@@ -8,13 +8,11 @@ Procurement creates an APP or APP (CSE) draft only from a non-empty, same-year c
 
 Registration creates a PENDING inactive account. A signed Login-page registration reference provides system-only Pending/Approved/Rejected status without approval email or SMS. The one-account/one-role database rule remains enforced.
 
-## Department PPMP and Academic Affairs
+## Department workflow removal
 
-CED, CBM, CAS, CCSICT, CCJE, IAT, and PS each use one approved department account. Each department selects items from the shared CSE Master List and submits one request per fiscal year directly to Academic Affairs, or records No PPMP for that year. A submitted request is read-only.
+The dedicated Department Wishlist / Department PPMP interface and annual department-to-AA workflow added on 2026-10-15 have been removed at the user's request. AA and retained college roles use normal office PPMP permissions. Existing department accounts, role codes, office identity, and all normal modules are retained.
 
-Only AA has **Department Wishlist**, where it creates and edits a separate review copy for each submitted department PPMP. The annual collection is **Ready to Submit** when all seven departments have responded and every submitted PPMP copy is **Reviewed**. Editing a reviewed copy resets it to Draft. The collection retains separate department PPMPs and No PPMP responses; the next submission destination has not been specified.
-
-The revision adds four `department_ppmp_*` tables. On Render PostgreSQL, WSGI startup detects the built-in `RENDER=true` flag and creates only these four tables if missing, using a transaction and PostgreSQL advisory lock, then performs normal read-only schema verification. The current free service's Gunicorn command works without a paid pre-deploy step. This narrow bootstrap does not migrate existing tables or change existing PPMP, orders, consolidation, APP, catalog, or account data. Other installations retain `python app.py --migrate-only` after backup. See Render's [built-in environment variables](https://render.com/docs/environment-variables).
+Existing `department_ppmp_submissions`, `department_ppmp_submission_items`, `department_ppmp_review_copies`, and `department_ppmp_review_items` tables and any stored records are preserved. Their historical models are retained for record preservation and excluded from new schema creation. The removal performs no local or remote database migration or data change. WSGI startup no longer bootstraps these tables, and normal startup no longer requires them. Earlier implementation and local activation evidence remains in the revision history, explicitly superseded by this removal.
 
 ## Configure SQLite
 
@@ -56,7 +54,7 @@ Add these Web Service environment variables in the Render dashboard:
 | `FLASK_SECRET_KEY` | A unique, randomly generated secret. Do not use the development placeholder. |
 | `INITIAL_ADMIN_PASSWORD` | A private, strong password. Required only when initializing a new database without an existing Admin account. |
 
-The pre-deploy command applies the existing additive schema migrations. The WSGI entry point performs a read-only schema and connectivity check before serving requests, with the narrow Render PostgreSQL bootstrap for the four Department PPMP tables described above. Do not use `--reset-database` for deployment or data migration. Import the backed-up production records into Render PostgreSQL and reconcile table counts and key workflows before directing users to the Render URL.
+The pre-deploy command applies the existing additive schema migrations. The WSGI entry point performs a read-only schema and connectivity check before serving requests. The department workflow removal requires no migration and no database cleanup. Do not use `--reset-database` for deployment or data migration. Import the backed-up production records into Render PostgreSQL and reconcile table counts and key workflows before directing users to the Render URL.
 
 Render's free web services do not support persistent disks, and free PostgreSQL databases expire after 30 days. A service with an attached persistent disk cannot scale to multiple instances; a managed PostgreSQL database is the recommended relational-data option. See [Render's free instance limits](https://render.com/docs/free), [PostgreSQL guide](https://render.com/docs/postgresql), and [persistent disk limitations](https://render.com/docs/disks).
 

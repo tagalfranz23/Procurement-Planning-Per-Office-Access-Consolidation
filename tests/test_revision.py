@@ -156,181 +156,132 @@ class RevisionRulesTest(unittest.TestCase):
             db.session.commit()
         db.session.rollback()
 
-    def test_department_wishlist_routes_to_aa_and_review_copy_preserves_original(self):
-        departments = {
-            'CED': 'College of Education (CED)',
-            'CBM': 'College of Business and Management (CBM)',
-            'CAS': 'College of Arts and Sciences (CAS)',
-            'CCSICT': 'College of Computing Studies, Information and Communication Technology (CCSICT)',
-            'CCJE': 'College of Criminal Justice Education (CCJE)',
-            'IAT': 'Institute of Agricultural Technology (IAT)',
-            'PS': 'Polytechnic School (PS)',
-        }
-        department_users = {}
-        role_options = self.client.get('/api/auth/available-roles').get_json()
-        for code in departments:
-            self.assertIn(code, role_options['roles'])
-            self.assertIn(code, role_options['offices'])
-        registration = self.registration(
-            email='ced@isu.edu.ph', username='ced_department', role='CED', office='CED',
-        )
-        self.assertEqual(registration.status_code, 201, registration.get_json())
-        ced_user = User.query.filter_by(role='CED').one()
-        admin = User.query.filter_by(role='ADMIN').one()
-        with self.client.session_transaction() as session:
-            session['user_id'], session['role'] = admin.id, admin.role
-        approval = self.client.post(f'/api/admin/pending-users/{ced_user.id}/approve', json={})
-        self.assertEqual(approval.status_code, 200, approval.get_json())
-        self.assertIsNotNone(approval.get_json()['user']['college_id'])
-        department_users['CED'] = ced_user
-        for code, label in departments.items():
-            if code == 'CED':
-                continue
-            department_users[code] = User(
-                username=f'dept_{code.lower()}', full_name=label, email=f'{code.lower()}@isu.edu.ph',
-                password_hash='x', role=code, office=code,
-                account_status='ACTIVE', is_active=True,
-            )
+    def test_retired_department_endpoints_are_absent_and_normal_modules_remain_accessible(self):
+        college = College(code='CED', name='College of Education (CED)')
+        aa_office = College(code='AA', name='Academic Affairs')
+        db.session.add_all([college, aa_office])
+        db.session.flush()
         aa = User(username='academic_affairs', full_name='Academic Affairs', email='aa@isu.edu.ph',
-                  password_hash='x', role='AA', office='AA', account_status='ACTIVE', is_active=True)
-        master_item = WishlistItem(
-            office='ADMIN', item_description='Bond paper A4', category='Office Supplies',
-            unit='ream', quantity=0, estimated_cost=250, status='Available',
-        )
-        db.session.add_all([*department_users.values(), aa, master_item])
+                  password_hash=generate_password_hash('password123'), role='AA', office='AA',
+                  college_id=aa_office.id, account_status='ACTIVE', is_active=True)
+        college_user = User(username='ced', full_name='CED User', email='ced@isu.edu.ph',
+                            password_hash=generate_password_hash('password123'), role='CED',
+                            office='CED', college_id=college.id, account_status='ACTIVE', is_active=True)
+        master = WishlistItem(office='ADMIN', item_description='Preserved catalog item',
+                              category='Office Supplies', unit='piece', quantity=0,
+                              estimated_cost=15, status='Available')
+        db.session.add_all([aa, college_user, master])
         db.session.commit()
-
-        def use_account(user):
-            with self.client.session_transaction() as session:
-                session.clear()
-                session['user_id'], session['role'] = user.id, user.role
-
-        use_account(department_users['CED'])
-        for quantity in ('0.001', '10000000000', 'NaN', '-1'):
-            invalid = self.client.post('/api/department-wishlist', json={
-                'fiscal_year': 2027, 'items': [{'master_item_id': master_item.id, 'quantity': quantity}],
-            })
-            self.assertEqual(invalid.status_code, 400, invalid.get_json())
-        response = self.client.post('/api/department-wishlist', json={
-            'fiscal_year': 2027,
-            'notes': 'CED annual request',
-            'items': [{'master_item_id': master_item.id, 'quantity': '2', 'remarks': 'For classrooms'}],
-        })
-        self.assertEqual(response.status_code, 201, response.get_json())
-        submitted = response.get_json()
-        self.assertEqual(submitted['status'], 'Submitted')
-        self.assertEqual(submitted['item_count'], 1)
-        self.assertEqual(self.client.post('/api/department-wishlist', json={
-            'fiscal_year': 2027,
-            'items': [{'master_item_id': master_item.id, 'quantity': '1'}],
-        }).status_code, 409)
+        admin = User.query.filter_by(role='ADMIN').one()
+        retired_paths = (
+            '/api/department-wishlist',
+            '/api/department-wishlist/1/review-copy',
+            '/api/department-wishlist/review-copies/1',
+        )
+        self.assertFalse(any('department-wishlist' in rule.rule for rule in application.app.url_map.iter_rules()))
+        for user in (aa, admin, college_user):
+            with self.subTest(role=user.role):
+                login = self.client.post('/api/auth/login', json={
+                    'username': user.username, 'password': 'password123',
+                })
+                self.assertEqual(login.status_code, 200, login.get_json())
+                expected = {'*'} if user.role == 'ADMIN' else set(application.OFFICE_PERMISSIONS)
+                self.assertEqual(set(login.get_json()['permissions']), expected)
+                self.assertEqual(application.permissions_for(user), expected)
+                for path in retired_paths:
+                    for method in ('GET', 'POST', 'PATCH'):
+                        with self.subTest(path=path, method=method):
+                            self.assertEqual(self.client.open(path, method=method, json={}).status_code, 404)
+                for path in ('/', '/api/auth/me', '/api/dashboard/ppmp', '/api/ppmp',
+                             '/api/ppmp-records', '/api/ppmp-orders', '/api/wishlist',
+                             '/api/reports/available', '/api/reports/ppmp-orders',
+                             '/api/activity-log', '/api/notifications', '/api/metadata',
+                             '/api/auth/available-roles', '/api/colleges'):
+                    with self.subTest(path=path):
+                        response = self.client.get(path)
+                        self.assertEqual(response.status_code, 200, response.get_data(as_text=True)[:500])
+                dashboard = self.client.get('/').get_data(as_text=True)
+                for removed in ('panel-department-wishlist', 'department-wishlist-nav',
+                                '/api/department-wishlist', 'AA Review Copy', 'Mark No PPMP'):
+                    self.assertNotIn(removed, dashboard)
+                for path in ('/api/apps', '/api/dashboard/app', '/api/admin/pending-users',
+                             '/api/admin/activity-log', '/api/admin/audit-log'):
+                    expected_status = 200 if user.role == 'ADMIN' else 403
+                    with self.subTest(path=path):
+                        self.assertEqual(self.client.get(path).status_code, expected_status)
+                self.assertEqual(self.client.post('/api/auth/logout').status_code, 200)
+        self.assertEqual(db.session.get(WishlistItem, master.id).item_description, 'Preserved catalog item')
         self.assertEqual(PPMPOrder.query.count(), 0)
-        self.assertEqual(db.session.get(WishlistItem, master_item.id).status, 'Available')
-        self.assertEqual(self.client.get('/api/ppmp-orders').status_code, 403)
 
-        use_account(aa)
-        overview = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
-        self.assertFalse(overview['ready_to_submit'])
-        self.assertEqual(overview['department_count'], 7)
-        ced_entry = next(row for row in overview['departments'] if row['department_code'] == 'CED')
-        self.assertEqual(ced_entry['submission']['status'], 'Submitted')
-        self.assertEqual(ced_entry['review_copy'], None)
-
-        copy_response = self.client.post(
-            f"/api/department-wishlist/{submitted['id']}/review-copy", json={},
+    def test_retired_department_data_is_preserved_and_not_required_for_startup(self):
+        from sqlalchemy import inspect, select
+        from models import (
+            DepartmentPPMPReviewCopy, DepartmentPPMPReviewItem,
+            DepartmentPPMPSubmission, DepartmentPPMPSubmissionItem,
         )
-        self.assertEqual(copy_response.status_code, 201, copy_response.get_json())
-        review_copy = copy_response.get_json()
-        self.assertEqual(review_copy['items'][0]['item_name'], 'Bond paper A4')
-        self.assertEqual(review_copy['items'][0]['quantity'], 2.0)
-        self.assertEqual(review_copy['notes'], 'CED annual request')
-        changed_item = dict(review_copy['items'][0], item_name='AA-edited paper', quantity='4', estimated_unit_cost='300')
-        update_response = self.client.patch(
-            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={
-                'notes': 'Reviewed and adjusted by AA', 'items': [changed_item], 'mark_reviewed': True,
-            },
-        )
-        self.assertEqual(update_response.status_code, 200, update_response.get_json())
-        self.assertEqual(update_response.get_json()['status'], 'Reviewed')
-        self.assertEqual(update_response.get_json()['items'][0]['item_name'], 'AA-edited paper')
-        self.assertEqual(db.session.get(WishlistItem, master_item.id).item_description, 'Bond paper A4')
-
-        use_account(department_users['CED'])
-        original = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()['submission']
-        self.assertEqual(original['items'][0]['item_name'], 'Bond paper A4')
-        self.assertEqual(original['items'][0]['quantity'], 2.0)
-        self.assertNotIn('review_copy', original)
-        self.assertEqual(self.client.post(
-            f"/api/department-wishlist/{submitted['id']}/review-copy", json={},
-        ).status_code, 403)
-        self.assertEqual(self.client.patch(
-            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={'notes': 'Unauthorized'},
-        ).status_code, 403)
-
-        use_account(department_users['CBM'])
-        other_department = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
-        self.assertIsNone(other_department['submission'])
-        self.assertNotIn('departments', other_department)
-
-        for code, user in department_users.items():
-            if code == 'CED':
-                continue
-            use_account(user)
-            no_ppmp = self.client.post('/api/department-wishlist', json={
-                'fiscal_year': 2027, 'no_ppmp': True,
-            })
-            self.assertEqual(no_ppmp.status_code, 201, no_ppmp.get_json())
-            self.assertEqual(no_ppmp.get_json()['status'], 'No PPMP')
-
-        use_account(aa)
-        ready = self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()
-        self.assertTrue(ready['ready_to_submit'])
-        self.assertEqual(ready['reported_count'], 7)
-        self.assertEqual(ready['submitted_count'], 1)
-        self.assertEqual(ready['no_ppmp_count'], 6)
-        self.assertEqual(ready['reviewed_count'], 1)
-
-        # Source text longer than legacy VARCHAR limits must remain reviewable.
-        long_name = 'Complete catalog specification ' * 20
-        changed_item['item_name'] = long_name
-        changed = self.client.patch(
-            f"/api/department-wishlist/review-copies/{review_copy['id']}", json={'items': [changed_item]},
-        )
-        self.assertEqual(changed.status_code, 200, changed.get_json())
-        self.assertEqual(changed.get_json()['items'][0]['item_name'], long_name.strip())
-        self.assertEqual(changed.get_json()['status'], 'Draft')
-        self.assertFalse(self.client.get('/api/department-wishlist?fiscal_year=2027').get_json()['ready_to_submit'])
-
-        # A malformed department assignment cannot gain the legacy office path.
-        self.assertEqual(application.permissions_for(User(role='CED', office='AA')), set())
 
         admin = User.query.filter_by(role='ADMIN').one()
-        use_account(admin)
-        self.assertEqual(self.client.get('/api/department-wishlist?fiscal_year=2027').status_code, 403)
-
-    def test_department_schema_bootstrap_is_additive_and_repeatable(self):
-        from sqlalchemy import inspect
-
         master = WishlistItem(office='ADMIN', item_description='Preserved catalog item',
                               category='Office Supplies', unit='piece', quantity=0,
                               estimated_cost=15, status='Available')
         db.session.add(master)
+        db.session.flush()
+        submission = DepartmentPPMPSubmission(
+            department_code='CED', fiscal_year=2027, status='Submitted',
+            notes='Original historical request', submitted_by=admin.id,
+        )
+        db.session.add(submission)
+        db.session.flush()
+        original = DepartmentPPMPSubmissionItem(
+            submission_id=submission.id, master_item_id=master.id,
+            item_name='Historical item', category='Office Supplies', unit='piece',
+            quantity=2, estimated_unit_cost=15, remarks='Original notes',
+        )
+        review = DepartmentPPMPReviewCopy(
+            submission_id=submission.id, status='Reviewed', notes='Historical reviewed copy',
+            created_by=admin.id, reviewed_by=admin.id, reviewed_at=datetime(2026, 10, 15, 0, 0),
+        )
+        db.session.add_all([original, review])
+        db.session.flush()
+        db.session.add(DepartmentPPMPReviewItem(
+            review_copy_id=review.id, master_item_id=master.id, item_name='Historical AA edit',
+            category='Office Supplies', unit='piece', quantity=3, estimated_unit_cost=15,
+            remarks='Retain edited notes', is_custom_item=False,
+        ))
         db.session.commit()
-        original_id = master.id
-        workflow_tables = [
-            application.DepartmentPPMPReviewItem.__table__, application.DepartmentPPMPReviewCopy.__table__,
-            application.DepartmentPPMPSubmissionItem.__table__, application.DepartmentPPMPSubmission.__table__,
-        ]
-        db.metadata.drop_all(bind=db.engine, tables=workflow_tables)
-        original_tables = set(inspect(db.engine).get_table_names())
-        for _ in range(2):
-            application.ensure_department_wishlist_schema()
-            application.verify_database_schema()
-        self.assertEqual(set(inspect(db.engine).get_table_names()) - original_tables,
-                         {table.name for table in workflow_tables})
-        self.assertEqual(User.query.count(), 1)
+        archive_tables = [model.__table__ for model in (
+            DepartmentPPMPSubmission, DepartmentPPMPSubmissionItem,
+            DepartmentPPMPReviewCopy, DepartmentPPMPReviewItem,
+        )]
+
+        def archive_snapshot():
+            return {table.name: [dict(row) for row in db.session.execute(select(table)).mappings()]
+                    for table in archive_tables}
+
+        before = archive_snapshot()
+        with patch.object(db, 'create_all') as create_all:
+            application.initialize_database()
+        create_all.assert_not_called()
+        self.assertEqual(archive_snapshot(), before)
         self.assertEqual(WishlistItem.query.count(), 1)
-        self.assertEqual(db.session.get(WishlistItem, original_id).item_description, 'Preserved catalog item')
+        self.assertEqual(User.query.count(), 1)
+        # Only this isolated in-memory fixture is dropped to simulate installations
+        # that never deployed the retired workflow; production data is never used.
+        db.session.remove()
+        db.metadata.drop_all(bind=db.engine, tables=list(reversed(archive_tables)))
+        without_archive = set(inspect(db.engine).get_table_names())
+        with patch.object(db, 'create_all') as create_all:
+            application.initialize_database()
+        create_all.assert_not_called()
+        self.assertEqual(set(inspect(db.engine).get_table_names()), without_archive)
+        self.assertTrue({table.name for table in archive_tables}.isdisjoint(without_archive))
+        self.assertEqual(WishlistItem.query.count(), 1)
+        self.assertEqual(User.query.count(), 1)
+        application.initialize_database(apply_migrations=True)
+        self.assertTrue({table.name for table in archive_tables}.isdisjoint(
+            set(inspect(db.engine).get_table_names())))
+        self.assertEqual(WishlistItem.query.count(), 1)
+        self.assertEqual(User.query.count(), 1)
 
     def test_office_user_cannot_create_for_another_college(self):
         first = College(code='A', name='College A')

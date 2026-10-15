@@ -123,9 +123,11 @@ DEPARTMENT_UNITS = {
     'PS': 'Polytechnic School (PS)',
 }
 DEPARTMENT_CODES = frozenset(DEPARTMENT_UNITS)
-DEPARTMENT_WISHLIST_PERMISSIONS = {
-    'ppmp.department_wishlist.view', 'ppmp.department_wishlist.submit',
-}
+# Retain organizational identities for registration and normal office PPMP access.
+RETIRED_DEPARTMENT_MODELS = (
+    DepartmentPPMPReviewItem, DepartmentPPMPReviewCopy,
+    DepartmentPPMPSubmissionItem, DepartmentPPMPSubmission,
+)
 WORKFLOW_ROLES = tuple(User.ROLES)
 
 PPMP_OFFICE_ROLES = (set(OFFICES) | set(DEPARTMENT_CODES)) - {'EO', 'PROCUREMENT', 'BUDGET'}
@@ -150,9 +152,6 @@ OFFICE_PERMISSIONS = {
     'ppmp.view', 'ppmp.wishlist.view', 'ppmp.record.view', 'ppmp.record.create',
     'ppmp.record.edit', 'ppmp.record.submit', 'ppmp.order.create', 'ppmp.order.view',
     'ppmp.report', 'ppmp.export',
-}
-AA_DEPARTMENT_WISHLIST_PERMISSIONS = {
-    'ppmp.department_wishlist.view', 'ppmp.department_wishlist.review',
 }
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
@@ -204,17 +203,9 @@ def is_ppmp_office_role(role):
     return role in PPMP_OFFICE_ROLES or role in {office.code for office in College.query.filter_by(is_active=True).all()}
 
 
-def is_department_user(user):
-    return bool(user and user.role in DEPARTMENT_CODES and user.office == user.role)
-
-
 def permissions_for(user):
     if not user:
         return set()
-    if user.role in DEPARTMENT_CODES:
-        return set(DEPARTMENT_WISHLIST_PERMISSIONS) if is_department_user(user) else set()
-    if user.role == 'AA':
-        return set(OFFICE_PERMISSIONS) | set(AA_DEPARTMENT_WISHLIST_PERMISSIONS)
     return ROLE_PERMISSIONS.get(user.role, OFFICE_PERMISSIONS if is_ppmp_office_role(user.role) else set())
 
 
@@ -428,6 +419,7 @@ def ensure_admin_account():
 
 def reset_database():
     """Delete all operational data, then leave only admin/admin1234."""
+    existing_tables = set(inspect(db.engine).get_table_names())
     db.session.query(PasswordResetRequest).delete()
     db.session.query(SurveyRecipient).delete()
     db.session.query(Survey).delete()
@@ -444,10 +436,10 @@ def reset_database():
     db.session.query(PPMPOrder).delete()
     db.session.query(PPMPRecordItem).delete()
     db.session.query(PPMPRecord).delete()
-    db.session.query(DepartmentPPMPReviewItem).delete()
-    db.session.query(DepartmentPPMPReviewCopy).delete()
-    db.session.query(DepartmentPPMPSubmissionItem).delete()
-    db.session.query(DepartmentPPMPSubmission).delete()
+    # Retired tables are optional on installations that never used the feature.
+    for model in RETIRED_DEPARTMENT_MODELS:
+        if model.__tablename__ in existing_tables:
+            db.session.query(model).delete()
     db.session.query(WishlistRequest).delete()
     db.session.query(WishlistItem).delete()
     db.session.query(PPMPSubmissionRequest).delete()
@@ -466,7 +458,8 @@ def verify_database_schema():
     """Read-only startup check. Schema changes belong to --migrate-only."""
     inspector = inspect(db.engine)
     existing_tables = set(inspector.get_table_names())
-    required_tables = set(db.metadata.tables)
+    retired_tables = {model.__tablename__ for model in RETIRED_DEPARTMENT_MODELS}
+    required_tables = set(db.metadata.tables) - retired_tables
     missing_tables = sorted(required_tables - existing_tables)
     if missing_tables:
         raise RuntimeError(
@@ -511,20 +504,6 @@ def verify_database_schema():
             'estimated_unit_cost', 'estimated_budget', 'is_custom_item',
         },
         'ppmp_comments': {'ppmp_record_id', 'ppmp_record_item_id', 'wishlist_order_id', 'comment_type'},
-        'department_ppmp_submissions': {
-            'department_code', 'fiscal_year', 'status', 'notes', 'submitted_by', 'submitted_at',
-        },
-        'department_ppmp_submission_items': {
-            'submission_id', 'master_item_id', 'item_name', 'category', 'unit', 'quantity',
-            'estimated_unit_cost', 'remarks',
-        },
-        'department_ppmp_review_copies': {
-            'submission_id', 'status', 'notes', 'created_by', 'reviewed_by', 'reviewed_at',
-        },
-        'department_ppmp_review_items': {
-            'review_copy_id', 'master_item_id', 'item_name', 'category', 'unit', 'quantity',
-            'estimated_unit_cost', 'remarks', 'is_custom_item',
-        },
         'workflow_audit_log': {'ip_address'},
     }
     missing_columns = []
@@ -541,21 +520,6 @@ def verify_database_schema():
         raise RuntimeError('No active ADMIN account exists. Run: python app.py --migrate-only')
 
 
-def ensure_department_wishlist_schema():
-    """Add only the department workflow tables to an existing installation."""
-    tables = [
-        DepartmentPPMPSubmission.__table__, DepartmentPPMPSubmissionItem.__table__,
-        DepartmentPPMPReviewCopy.__table__, DepartmentPPMPReviewItem.__table__,
-    ]
-    with app.app_context(), db.engine.begin() as connection:
-        if connection.dialect.name == 'postgresql':
-            # Serialize the additive DDL across Gunicorn workers and deploys.
-            connection.execute(text('SELECT pg_advisory_xact_lock(20261015, 1)'))
-        existing_tables = set(inspect(connection).get_table_names())
-        if not {'users', 'wishlist_items'}.issubset(existing_tables):
-            # A fresh installation still requires the complete migration command.
-            return
-        db.metadata.create_all(bind=connection, tables=tables, checkfirst=True)
 
 
 def initialize_database(apply_migrations=False):
@@ -564,7 +528,10 @@ def initialize_database(apply_migrations=False):
             connection = get_db()
             connection.close()
             if apply_migrations:
-                db.create_all()
+                retired_tables = {model.__tablename__ for model in RETIRED_DEPARTMENT_MODELS}
+                db.metadata.create_all(bind=db.engine, tables=[
+                    table for name, table in db.metadata.tables.items() if name not in retired_tables
+                ])
                 migrate_revision_schema()
                 ensure_admin_account()
                 verify_database_schema()
@@ -2084,369 +2051,6 @@ def ppmp_submission_requests():
     return jsonify(record.to_dict()), 201
 
 
-def department_wishlist_year(raw_value=None):
-    if raw_value in (None, ''):
-        return datetime.utcnow().year
-    try:
-        year = int(raw_value)
-    except (TypeError, ValueError):
-        return None
-    return year if 2000 <= year <= 2100 else None
-
-
-def valid_department_amount(value, *, quantity=False):
-    """Reject amounts that would round to zero or overflow the workflow columns."""
-    limit = Decimal('10000000000') if quantity else Decimal('10000000000000')
-    if not value.is_finite() or value < 0 or value >= limit or (quantity and value == 0):
-        return False
-    return value == value.quantize(Decimal('0.01'))
-
-
-def department_package_status(fiscal_year):
-    records = DepartmentPPMPSubmission.query.filter_by(fiscal_year=fiscal_year).all()
-    by_code = {record.department_code: record for record in records}
-    departments = []
-    complete = True
-    submitted_count = 0
-    no_ppmp_count = 0
-    reviewed_count = 0
-    for code, name in DEPARTMENT_UNITS.items():
-        record = by_code.get(code)
-        status = record.status if record else 'Awaiting'
-        review_copy = record.review_copy if record else None
-        if status == 'Submitted':
-            submitted_count += 1
-            if review_copy and review_copy.status == 'Reviewed':
-                reviewed_count += 1
-            else:
-                complete = False
-        elif status == 'No PPMP':
-            no_ppmp_count += 1
-        else:
-            complete = False
-        departments.append({
-            'department_code': code,
-            'department_name': name,
-            'status': status,
-            'submission': record.to_dict() if record else None,
-            'review_copy': review_copy.to_dict() if review_copy else None,
-        })
-    return {
-        'fiscal_year': fiscal_year,
-        'ready_to_submit': complete,
-        'department_count': len(DEPARTMENT_UNITS),
-        'reported_count': submitted_count + no_ppmp_count,
-        'submitted_count': submitted_count,
-        'no_ppmp_count': no_ppmp_count,
-        'reviewed_count': reviewed_count,
-        'departments': departments,
-    }
-
-
-@app.route('/api/department-wishlist', methods=['GET', 'POST'])
-@login_required
-def department_wishlist():
-    user = current_session_user()
-    if request.method == 'GET':
-        if not has_permission(user, 'ppmp.department_wishlist.view'):
-            return jsonify({'error': 'You do not have permission to access Department Wishlist.'}), 403
-        fiscal_year = department_wishlist_year(request.args.get('fiscal_year'))
-        if fiscal_year is None:
-            return jsonify({'error': 'Fiscal year must be between 2000 and 2100.'}), 400
-        if user.role == 'AA':
-            return jsonify(department_package_status(fiscal_year))
-        if not is_department_user(user):
-            return jsonify({'error': 'Only Academic Affairs and the designated departments can access this workflow.'}), 403
-        submission = DepartmentPPMPSubmission.query.filter_by(
-            department_code=user.role, fiscal_year=fiscal_year,
-        ).one_or_none()
-        available_items = WishlistItem.query.filter_by(status='Available').order_by(
-            WishlistItem.item_description.asc(), WishlistItem.id.asc(),
-        ).all()
-        return jsonify({
-            'department_code': user.role,
-            'department_name': DEPARTMENT_UNITS[user.role],
-            'fiscal_year': fiscal_year,
-            'submission': submission.to_dict(include_review_copy=False) if submission else None,
-            'available_items': [item.to_dict() for item in available_items],
-        })
-
-    if not is_department_user(user) or not has_permission(user, 'ppmp.department_wishlist.submit'):
-        return jsonify({'error': 'Only a designated department account can submit its annual PPMP response.'}), 403
-    data = request.get_json(silent=True) or {}
-    fiscal_year = department_wishlist_year(data.get('fiscal_year'))
-    if fiscal_year is None:
-        return jsonify({'error': 'Fiscal year must be between 2000 and 2100.'}), 400
-    notes = str(data.get('notes') or '').strip() or None
-    if notes and len(notes) > 5000:
-        return jsonify({'error': 'Notes must not exceed 5,000 characters.'}), 400
-    existing = DepartmentPPMPSubmission.query.filter_by(
-        department_code=user.role, fiscal_year=fiscal_year,
-    ).with_for_update().one_or_none()
-    if data.get('no_ppmp') is True:
-        if existing and existing.status == 'Submitted':
-            return jsonify({'error': 'A submitted PPMP is already recorded for this department and fiscal year.'}), 409
-        if existing:
-            existing.notes = notes
-            result = existing
-            status_code = 200
-        else:
-            result = DepartmentPPMPSubmission(
-                department_code=user.role, fiscal_year=fiscal_year, status='No PPMP',
-                notes=notes, submitted_by=user.id,
-            )
-            db.session.add(result)
-            status_code = 201
-        result.status = 'No PPMP'
-        result.submitted_by = user.id
-        result.submitted_at = datetime.utcnow()
-        try:
-            db.session.flush()
-        except IntegrityError:
-            db.session.rollback()
-            return jsonify({'error': 'A PPMP response already exists for this department and fiscal year.'}), 409
-        audit('department_ppmp_submission', result.id, 'DEPARTMENT_REPORTED_NO_PPMP', {
-            'department_code': user.role, 'fiscal_year': fiscal_year,
-        })
-        notify_roles(
-            ('AA',), 'Department response recorded',
-            f'{DEPARTMENT_UNITS[user.role]} reported No PPMP for Fiscal Year {fiscal_year}.',
-        )
-        db.session.commit()
-        return jsonify(result.to_dict(include_review_copy=False)), status_code
-
-    requested_items = data.get('items')
-    if not isinstance(requested_items, list) or not requested_items or len(requested_items) > 100:
-        return jsonify({'error': 'Select between 1 and 100 CSE Master List items for the PPMP request.'}), 400
-    if existing and existing.status == 'Submitted':
-        return jsonify({'error': 'Only one PPMP request is allowed for this department and fiscal year.'}), 409
-
-    parsed_items = []
-    master_ids = []
-    for row in requested_items:
-        if not isinstance(row, dict):
-            return jsonify({'error': 'Each selected CSE item must be a valid object.'}), 400
-        try:
-            master_id = int(row.get('master_item_id'))
-            quantity = Decimal(str(row.get('quantity')))
-        except (TypeError, ValueError, InvalidOperation):
-            return jsonify({'error': 'Each selected item needs a valid identifier and quantity.'}), 400
-        if not valid_department_amount(quantity, quantity=True):
-            return jsonify({'error': 'Quantity must be positive, below 10 billion, and have at most two decimal places.'}), 400
-        remarks = str(row.get('remarks') or '').strip() or None
-        if remarks and len(remarks) > 5000:
-            return jsonify({'error': 'An item note must not exceed 5,000 characters.'}), 400
-        parsed_items.append((master_id, quantity, remarks))
-        master_ids.append(master_id)
-    if len(master_ids) != len(set(master_ids)):
-        return jsonify({'error': 'A CSE Master List item can only appear once in a department PPMP.'}), 400
-    masters = WishlistItem.query.filter(
-        WishlistItem.id.in_(master_ids), WishlistItem.status == 'Available',
-    ).with_for_update().all()
-    if len(masters) != len(master_ids):
-        return jsonify({'error': 'One or more selected items are no longer available in the CSE Master List.'}), 409
-    master_by_id = {item.id: item for item in masters}
-
-    if existing:
-        submission = existing
-        submission.status = 'Submitted'
-        submission.notes = notes
-        submission.submitted_by = user.id
-        submission.submitted_at = datetime.utcnow()
-        submission.items.clear()
-    else:
-        submission = DepartmentPPMPSubmission(
-            department_code=user.role, fiscal_year=fiscal_year, status='Submitted',
-            notes=notes, submitted_by=user.id,
-        )
-        db.session.add(submission)
-    for master_id, quantity, remarks in parsed_items:
-        master = master_by_id[master_id]
-        submission.items.append(DepartmentPPMPSubmissionItem(
-            master_item_id=master.id,
-            item_name=master.item_description,
-            category=master.category,
-            unit=master.unit,
-            quantity=quantity,
-            estimated_unit_cost=master.estimated_cost,
-            remarks=remarks,
-        ))
-    try:
-        db.session.flush()
-        audit('department_ppmp_submission', submission.id, 'DEPARTMENT_PPMP_SUBMITTED', {
-            'department_code': user.role, 'fiscal_year': fiscal_year,
-            'item_count': len(parsed_items),
-        })
-        notify_roles(
-            ('AA',), 'Department PPMP received',
-            f'{DEPARTMENT_UNITS[user.role]} submitted its PPMP for Fiscal Year {fiscal_year}.',
-        )
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({'error': 'A PPMP response already exists for this department and fiscal year.'}), 409
-    return jsonify(submission.to_dict(include_review_copy=False)), 201
-
-
-@app.route('/api/department-wishlist/<int:submission_id>/review-copy', methods=['POST'])
-@login_required
-def create_department_ppmp_review_copy(submission_id):
-    user = current_session_user()
-    if user.role != 'AA' or not has_permission(user, 'ppmp.department_wishlist.review'):
-        return jsonify({'error': 'Only Academic Affairs can create a Department Wishlist review copy.'}), 403
-    submission = DepartmentPPMPSubmission.query.filter_by(id=submission_id).with_for_update().one_or_none()
-    if submission is None:
-        return jsonify({'error': 'Department PPMP submission not found.'}), 404
-    if submission.status != 'Submitted':
-        return jsonify({'error': 'Only a submitted department PPMP can be copied for review.'}), 409
-    if submission.review_copy:
-        return jsonify(submission.review_copy.to_dict()), 200
-    review_copy = DepartmentPPMPReviewCopy(
-        submission=submission, created_by=user.id, status='Draft', notes=submission.notes,
-    )
-    db.session.add(review_copy)
-    for item in submission.items:
-        review_copy.items.append(DepartmentPPMPReviewItem(
-            master_item_id=item.master_item_id,
-            item_name=item.item_name,
-            category=item.category,
-            unit=item.unit,
-            quantity=item.quantity,
-            estimated_unit_cost=item.estimated_unit_cost,
-            remarks=item.remarks,
-            is_custom_item=False,
-        ))
-    try:
-        db.session.flush()
-    except IntegrityError:
-        db.session.rollback()
-        existing_copy = DepartmentPPMPReviewCopy.query.filter_by(submission_id=submission.id).one_or_none()
-        if existing_copy:
-            return jsonify(existing_copy.to_dict()), 200
-        return jsonify({'error': 'The Academic Affairs review copy could not be created. Refresh and try again.'}), 409
-    audit('department_ppmp_review_copy', review_copy.id, 'AA_REVIEW_COPY_CREATED', {
-        'submission_id': submission.id,
-        'department_code': submission.department_code,
-        'fiscal_year': submission.fiscal_year,
-        'item_count': len(review_copy.items),
-    })
-    db.session.commit()
-    return jsonify(review_copy.to_dict()), 201
-
-
-@app.route('/api/department-wishlist/review-copies/<int:review_copy_id>', methods=['PATCH'])
-@login_required
-def update_department_ppmp_review_copy(review_copy_id):
-    user = current_session_user()
-    if user.role != 'AA' or not has_permission(user, 'ppmp.department_wishlist.review'):
-        return jsonify({'error': 'Only Academic Affairs can edit Department Wishlist review copies.'}), 403
-    review_copy = DepartmentPPMPReviewCopy.query.filter_by(id=review_copy_id).with_for_update().one_or_none()
-    if review_copy is None:
-        return jsonify({'error': 'Department PPMP review copy not found.'}), 404
-    submission = review_copy.submission
-    if submission.status != 'Submitted':
-        return jsonify({'error': 'The source department submission is not available for review.'}), 409
-    data = request.get_json(silent=True) or {}
-    if 'notes' in data:
-        notes = str(data.get('notes') or '').strip() or None
-        if notes and len(notes) > 5000:
-            return jsonify({'error': 'AA review notes must not exceed 5,000 characters.'}), 400
-        review_copy.notes = notes
-
-    if 'items' in data:
-        rows = data.get('items')
-        if not isinstance(rows, list) or not rows or len(rows) > 100:
-            return jsonify({'error': 'A reviewed PPMP copy must contain between 1 and 100 items.'}), 400
-        existing_by_id = {item.id: item for item in review_copy.items}
-        retained_ids = set()
-        retained_master_ids = set()
-        for row in rows:
-            if not isinstance(row, dict):
-                return jsonify({'error': 'Each review copy row must be a valid object.'}), 400
-            item_id = row.get('id')
-            if item_id not in (None, ''):
-                try:
-                    item_id = int(item_id)
-                except (TypeError, ValueError):
-                    return jsonify({'error': 'A review copy item identifier is invalid.'}), 400
-                item = existing_by_id.get(item_id)
-                if item is None or item_id in retained_ids:
-                    return jsonify({'error': 'A review copy row was repeated or does not belong to this copy.'}), 400
-                retained_ids.add(item_id)
-            else:
-                item = DepartmentPPMPReviewItem(review_copy=review_copy)
-                db.session.add(item)
-
-            item_name = str(row.get('item_name') or '').strip()
-            category = str(row.get('category') or '').strip()
-            unit = str(row.get('unit') or '').strip()
-            remarks = str(row.get('remarks') or '').strip() or None
-            try:
-                quantity = Decimal(str(row.get('quantity')))
-                unit_cost = Decimal(str(row.get('estimated_unit_cost')))
-            except (TypeError, ValueError, InvalidOperation):
-                return jsonify({'error': 'Quantity and estimated unit cost must be numeric.'}), 400
-            if not item_name or len(item_name) > 5000 or not category or len(category) > 80 or not unit or len(unit) > 60:
-                return jsonify({'error': 'Item name, category, or unit is empty or exceeds its allowed length.'}), 400
-            if remarks and len(remarks) > 5000:
-                return jsonify({'error': 'An item note must not exceed 5,000 characters.'}), 400
-            if not valid_department_amount(quantity, quantity=True) or not valid_department_amount(unit_cost):
-                return jsonify({'error': 'Enter a positive quantity and nonnegative unit cost within their limits, with at most two decimal places.'}), 400
-
-            raw_master_id = row.get('master_item_id', item.master_item_id)
-            if raw_master_id in (None, ''):
-                master_id = None
-            else:
-                try:
-                    master_id = int(raw_master_id)
-                except (TypeError, ValueError):
-                    return jsonify({'error': 'A CSE Master List item identifier is invalid.'}), 400
-                if master_id in retained_master_ids:
-                    return jsonify({'error': 'A CSE Master List item can only appear once in the review copy.'}), 400
-                retained_master_ids.add(master_id)
-                if master_id != item.master_item_id:
-                    master = db.session.get(WishlistItem, master_id)
-                    if master is None or master.status != 'Available':
-                        return jsonify({'error': 'New review copy items must come from an available CSE Master List entry.'}), 409
-            item.master_item_id = master_id
-            item.item_name = item_name
-            item.category = category
-            item.unit = unit
-            item.quantity = quantity
-            item.estimated_unit_cost = unit_cost
-            item.remarks = remarks
-            item.is_custom_item = master_id is None
-
-        for item_id, item in existing_by_id.items():
-            if item_id not in retained_ids:
-                review_copy.items.remove(item)
-                db.session.delete(item)
-
-    marking_reviewed = data.get('mark_reviewed') is True
-    if not review_copy.items:
-        return jsonify({'error': 'A Department PPMP review copy must contain at least one item.'}), 400
-    review_copy.status = 'Reviewed' if marking_reviewed else 'Draft'
-    review_copy.reviewed_by = user.id if marking_reviewed else None
-    review_copy.reviewed_at = datetime.utcnow() if marking_reviewed else None
-    db.session.flush()
-    audit('department_ppmp_review_copy', review_copy.id,
-          'AA_REVIEW_COPY_COMPLETED' if marking_reviewed else 'AA_REVIEW_COPY_UPDATED', {
-              'submission_id': submission.id,
-              'department_code': submission.department_code,
-              'fiscal_year': submission.fiscal_year,
-              'item_count': len(review_copy.items),
-              'status': review_copy.status,
-          })
-    if marking_reviewed:
-        department_users = User.query.filter_by(
-            role=submission.department_code, is_active=True, account_status='ACTIVE',
-        ).all()
-        add_notification(
-            department_users, 'Department PPMP review completed',
-            f'Academic Affairs completed review of your {submission.fiscal_year} PPMP copy.', 'success',
-        )
-    db.session.commit()
-    return jsonify(review_copy.to_dict())
 
 
 @app.route("/api/wishlist", methods=["GET", "POST"])
@@ -4423,3 +4027,4 @@ if __name__ == "__main__":
     else:
         print('Database ready. Starting PPMP web server...', flush=True)
         app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1", port=int(os.getenv("FLASK_PORT", "5000")), host="0.0.0.0")
+

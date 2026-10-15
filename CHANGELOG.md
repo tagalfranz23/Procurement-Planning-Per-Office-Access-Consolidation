@@ -2,13 +2,25 @@
 
 > This file is retained as a historical source. The authoritative consolidated record is `..\SYSTEM_REVISION_RECORD.md`.
 
+## 2026-10-15 - Department Wishlist workflow removal
+
+- Removed the dedicated AA Department Wishlist and department PPMP sidebar/panel, browser state, loaders, handlers, and annual collection/review-copy interface.
+- Removed the three dedicated department intake/review API handlers and their workflow helpers and exclusive permissions. AA and retained college roles use the normal office permission fallback.
+- Removed the Render department-table startup bootstrap and the requirement for those tables in normal schema verification. AA's normal PPMP functions, department account/role/office identity, and other modules are retained.
+- Preserved the four existing `department_ppmp_*` tables and their stored records; historical models are retained for preservation and excluded from new schema creation. This removal makes no local or remote schema/data changes and requires no cleanup migration.
+- The department implementation and activation entries below are historical and superseded. Compilation, two-template validation, removal/migration regressions, and 105 isolated Edge checks across 12 roles passed. The full suite ran 35 tests: 32 passed and three legacy UI assertions also failed on the exact pre-removal baseline `f498b89`; there were no errors or skips. Read-only local fingerprints preserved all 31 table schemas and 223 records. Shared API bodies/decorators were unchanged. Render deployment has not been observed; detailed verification and harness limits are in the authoritative revision record.
+
 ## 2026-10-15 - Local Department PPMP schema activation
+
+**Historical activation; the workflow was subsequently withdrawn by the removal above.**
 
 - Backed up local `ppmp.sqlite` using SQLite online backup to `backups/ppmp_before_department_schema_20261015_013250_261181.sqlite`, then used the existing `ensure_department_wishlist_schema()` routine to create only the four missing department tables. The new tables remain empty.
 - Verified the backup and preservation of all 160 existing rows across 27 tables using per-table SHA-256 row fingerprints. SQLite `quick_check` and `initialize_database(apply_migrations=False)` passed.
 - This subsequent local activation changed no application behavior, created no accounts/demo rows, ran no broader migrations, and touched no remote database. The original implementation notes below retain their historical context.
 
 ## 2026-10-15 - Department PPMP intake and Academic Affairs review
+
+**Superseded by the Department Wishlist workflow removal above. The following records the earlier implementation, not current behavior.**
 
 - Added one annual CSE-based request or No PPMP response for each of CED, CBM, CAS, CCSICT, CCJE, IAT, and PS, using one account per department role.
 - Added department-scoped PPMP workspaces and an AA-only Department Wishlist collection. Department submissions route directly to AA.

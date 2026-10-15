@@ -539,7 +539,7 @@ class WishlistItem(db.Model):
 
 
 class DepartmentPPMPSubmission(db.Model):
-    """Immutable annual department submission or its explicit No PPMP response."""
+    """Historical department submission retained after workflow removal."""
     __tablename__ = 'department_ppmp_submissions'
 
     STATUSES = ('Submitted', 'No PPMP')
@@ -568,32 +568,10 @@ class DepartmentPPMPSubmission(db.Model):
         CheckConstraint("status IN ('Submitted','No PPMP')", name='ck_department_ppmp_submission_status'),
     )
 
-    @property
-    def total_budget(self):
-        return sum((item.quantity or 0) * (item.estimated_unit_cost or 0) for item in self.items)
-
-    def to_dict(self, include_items=True, include_review_copy=True):
-        result = {
-            'id': self.id,
-            'department_code': self.department_code,
-            'fiscal_year': self.fiscal_year,
-            'status': self.status,
-            'notes': self.notes,
-            'submitted_by': self.submitted_by,
-            'submitter_name': self.submitter.full_name if self.submitter else '',
-            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
-            'item_count': len(self.items),
-            'total_budget': float(self.total_budget or 0),
-        }
-        if include_items:
-            result['items'] = [item.to_dict() for item in self.items]
-        if include_review_copy:
-            result['review_copy'] = self.review_copy.to_dict() if self.review_copy else None
-        return result
 
 
 class DepartmentPPMPSubmissionItem(db.Model):
-    """Read-only item snapshot copied from the shared CSE Master List at submission."""
+    """Historical item snapshot; no active Department Wishlist API uses it."""
     __tablename__ = 'department_ppmp_submission_items'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -618,24 +596,10 @@ class DepartmentPPMPSubmissionItem(db.Model):
         CheckConstraint('estimated_unit_cost >= 0', name='ck_department_submission_unit_cost'),
     )
 
-    def to_dict(self):
-        quantity = self.quantity or 0
-        unit_cost = self.estimated_unit_cost or 0
-        return {
-            'id': self.id,
-            'master_item_id': self.master_item_id,
-            'item_name': self.item_name,
-            'category': self.category,
-            'unit': self.unit,
-            'quantity': float(quantity),
-            'estimated_unit_cost': float(unit_cost),
-            'total': float(quantity * unit_cost),
-            'remarks': self.remarks,
-        }
 
 
 class DepartmentPPMPReviewCopy(db.Model):
-    """AA-owned editable copy of one immutable department PPMP submission."""
+    """Historical AA review copy retained without an active review workflow."""
     __tablename__ = 'department_ppmp_review_copies'
 
     STATUSES = ('Draft', 'Reviewed')
@@ -665,30 +629,10 @@ class DepartmentPPMPReviewCopy(db.Model):
         CheckConstraint("status IN ('Draft','Reviewed')", name='ck_department_ppmp_review_status'),
     )
 
-    @property
-    def total_budget(self):
-        return sum((item.quantity or 0) * (item.estimated_unit_cost or 0) for item in self.items)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'submission_id': self.submission_id,
-            'status': self.status,
-            'notes': self.notes,
-            'created_by': self.created_by,
-            'created_by_name': self.creator.full_name if self.creator else '',
-            'reviewed_by': self.reviewed_by,
-            'reviewed_by_name': self.reviewer.full_name if self.reviewer else '',
-            'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'item_count': len(self.items),
-            'total_budget': float(self.total_budget or 0),
-            'items': [item.to_dict() for item in self.items],
-        }
 
 
 class DepartmentPPMPReviewItem(db.Model):
-    """AA-editable copy row; editing it never mutates its source submission or CSE item."""
+    """Historical AA copy item retained for data preservation."""
     __tablename__ = 'department_ppmp_review_items'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -715,21 +659,7 @@ class DepartmentPPMPReviewItem(db.Model):
         CheckConstraint('estimated_unit_cost >= 0', name='ck_department_review_unit_cost'),
     )
 
-    def to_dict(self):
-        quantity = self.quantity or 0
-        unit_cost = self.estimated_unit_cost or 0
-        return {
-            'id': self.id,
-            'master_item_id': self.master_item_id,
-            'item_name': self.item_name,
-            'category': self.category,
-            'unit': self.unit,
-            'quantity': float(quantity),
-            'estimated_unit_cost': float(unit_cost),
-            'total': float(quantity * unit_cost),
-            'remarks': self.remarks,
-            'is_custom_item': self.is_custom_item,
-        }
+
 
 
 class WishlistRequest(db.Model):
@@ -1377,3 +1307,4 @@ def get_summary(fiscal_year=None, items=None):
         'by_quarter':   by_quarter,
         'by_status':    by_status,
     }
+

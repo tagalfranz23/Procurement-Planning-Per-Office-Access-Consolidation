@@ -486,7 +486,6 @@ td.center{text-align:center}
 .workspace-metrics{display:flex;gap:18px}.workspace-metric strong{display:block;font-size:22px}.workspace-metric span{font-size:11px;color:var(--gray-500)}
 .management-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
 .management-form .form-group{margin:0}.management-actions{display:flex;gap:6px;flex-wrap:wrap}
-.department-year-control{align-self:center;font-size:12px;font-weight:700;color:var(--gray-700)}.department-year-input{width:120px;min-width:100px}.department-submission-actions{display:grid;gap:12px}.department-notes-field{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--gray-700)}.department-notes-field textarea{width:100%;resize:vertical}.department-package-status{padding:12px 14px;border-radius:8px;background:var(--sky);color:var(--navy);font-weight:700}.department-package-status.ready{background:#DCFCE7;color:#166534}.department-item-input{min-width:95px;width:100%}.department-aa-input{min-width:125px;width:100%}.department-aa-notes{min-width:145px;width:100%}.department-empty{padding:18px;text-align:center;color:var(--gray-500)}
 .section-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--blue);font-weight:800;margin-bottom:5px}
 .ppmp-form-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:14px}.ppmp-form-grid .span2{grid-column:span 2}.check-label{min-height:36px;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:6px;color:var(--gray-700);font-size:12px}.ppmp-table-wrap{max-height:520px}.ppmp-wide-table{min-width:2100px}.ppmp-wide-table th:nth-child(2),.ppmp-wide-table td:nth-child(2){position:sticky;left:0;z-index:2;min-width:260px}.ppmp-wide-table td:nth-child(2){background:white}.ppmp-wide-table tr:hover td:nth-child(2){background:var(--sky)}.ppmp-wide-table th:nth-child(2){z-index:3}.selection-column{width:64px;text-align:center}.comment-list{display:grid;gap:8px}.comment-entry{padding:10px 12px;border-left:3px solid var(--blue);border-radius:6px;background:var(--gray-50)}.comment-entry-meta{font-size:10px;color:var(--gray-500);margin-bottom:3px}.comment-entry-message{font-size:12px;color:var(--gray-700);white-space:pre-wrap}.review-note{padding:10px 12px;border-radius:6px;background:#FEF3C7;color:#92400E;font-size:12px}
 .app-create-note{padding:10px 12px;border-left:3px solid var(--blue);background:var(--sky);color:var(--gray-700);font-size:12px;margin-bottom:12px}.app-workspace-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.app-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}.app-summary{padding:12px;border:1px solid var(--gray-200);border-radius:8px;background:var(--gray-50)}.app-summary strong{display:block;color:var(--navy);font-size:17px}.app-summary span{font-size:10px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em}#panel-apps,#panel-apps .card{min-width:0;max-width:100%}.app-table-wrap{display:block;width:100%;max-width:calc(100vw - 40px);max-height:620px;overflow:auto}.app-digital-table{min-width:2600px;table-layout:fixed}.app-digital-table th,.app-digital-table td{border:1px solid var(--gray-300);white-space:normal;vertical-align:top;line-height:1.35}.app-digital-table thead th{text-align:center;vertical-align:middle}.app-digital-table .app-group-header th{background:var(--navy-deep);font-size:10px;letter-spacing:.06em}.app-digital-table .app-column-header th{background:var(--navy);min-width:160px}.app-digital-table .app-column-header th:first-child{min-width:250px}.app-digital-table .app-section-row td{position:static!important;background:#dbeafe!important;color:var(--navy)!important;font-weight:800;text-transform:uppercase;letter-spacing:.03em}.app-digital-table .app-total-row td{background:#eef2ff;font-weight:800}.app-item-tools{display:flex;gap:4px;margin-top:7px}.app-item-tools .btn{padding:3px 7px}.app-two-column{display:grid;grid-template-columns:1fr 1fr;gap:16px}.account-detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-200);font-size:11px}.account-detail strong{display:block;color:var(--gray-500);font-size:9px;text-transform:uppercase}.approval-account{align-items:flex-start}.approval-account>div:first-child{flex:1}.app-modal{max-width:980px}.app-form-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:13px}.app-form-grid .span2{grid-column:span 2}.app-form-grid .span3{grid-column:1/-1}
@@ -703,9 +702,6 @@ td.center{text-align:center}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       {% if is_admin %}<span class="icon">RQ</span>{% endif %} PPMP Requests
     </div>
-    <div class="nav-item" id="department-wishlist-nav" data-panel="department-wishlist" onclick="showPanel('department-wishlist',this)" hidden>
-      <span class="icon">DW</span> {% if current_role == 'AA' %}Department Wishlist{% else %}Department PPMP{% endif %}
-    </div>
     {% if not is_admin %}
     <div class="nav-item" id="consolidation-nav" data-panel="consolidation" onclick="showPanel('consolidation',this)" hidden>
       <span class="icon">🏛️</span> Consolidation
@@ -855,57 +851,6 @@ td.center{text-align:center}
   </section>
 
   <!-- ══ APP DASHBOARD ══════════════════════════════ -->
-  <section class="panel" id="panel-department-wishlist">
-    <div class="page-header">
-      <div>
-        <div class="section-kicker">Academic Affairs Collection</div>
-        <h1 id="department-wishlist-title">{% if current_role == 'AA' %}Department Wishlist{% else %}Department PPMP{% endif %}</h1>
-        <p id="department-wishlist-description">Annual department PPMP requests and Academic Affairs review copies.</p>
-      </div>
-      <div class="action-row">
-        <label class="department-year-control" for="department-wishlist-year">Fiscal Year</label>
-        <input class="filter-input department-year-input" id="department-wishlist-year" type="number" min="2000" max="2100" aria-label="Department PPMP fiscal year">
-        <button class="btn btn-primary" type="button" onclick="loadDepartmentWishlist()">Refresh</button>
-      </div>
-    </div>
-
-    <div id="department-request-workspace" hidden>
-      <div class="card" id="department-submission-status-card">
-        <div class="card-body" id="department-submission-status"></div>
-      </div>
-      <div class="card" id="department-request-builder">
-        <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted">Select items for this department's one PPMP request for the fiscal year.</div></div></div>
-        <div class="card-body">
-          <div class="filter-row"><input class="filter-input" id="department-catalog-search" placeholder="Search CSE items" oninput="renderDepartmentCatalog()"></div>
-          <div class="table-wrap mt-12"><table><thead><tr><th>Select</th><th>Item</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th><th>Item Note</th></tr></thead><tbody id="department-catalog-list"><tr><td colspan="7">Loading CSE Master List…</td></tr></tbody></table></div>
-          <div class="department-submission-actions mt-12">
-            <label class="department-notes-field">Department notes<textarea class="filter-input" id="department-submission-notes" maxlength="5000" rows="2" placeholder="Optional notes for Academic Affairs"></textarea></label>
-            <div class="management-actions"><button class="btn btn-primary" type="button" onclick="submitDepartmentPPMP(this)">Submit PPMP to Academic Affairs</button><button class="btn btn-ghost" type="button" onclick="markDepartmentNoPPMP(this)">Mark No PPMP this year</button></div>
-          </div>
-        </div>
-      </div>
-      <div class="card" id="department-submitted-items-card" hidden>
-        <div class="card-header"><span class="card-title">Submitted PPMP Snapshot</span><span class="text-xs text-muted">This original stays unchanged while Academic Affairs edits its separate review copy.</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Quantity</th><th>Estimated Unit Cost</th><th>Total</th><th>Item Note</th></tr></thead><tbody id="department-submitted-items"></tbody></table></div>
-      </div>
-    </div>
-
-    <div id="aa-department-workspace" hidden>
-      <div class="card"><div class="card-body"><div class="department-package-status" id="department-package-status"></div></div></div>
-      <div class="card">
-        <div class="card-header"><div><span class="card-title">Seven Department Responses</span><div class="text-xs text-muted">The package is ready only when every department reports and each submitted PPMP has an AA review copy marked Reviewed.</div></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Department</th><th>Response</th><th>Submitted PPMP Items</th><th>Submitted Total</th><th>AA Copy</th><th>Action</th></tr></thead><tbody id="aa-department-submissions"><tr><td colspan="6">Loading department responses…</td></tr></tbody></table></div>
-      </div>
-      <div class="card" id="aa-review-copy-card" hidden>
-        <div class="card-header"><div><span class="card-title" id="aa-review-copy-title">AA Review Copy</span><div class="text-xs text-muted">Changes here affect only Academic Affairs' copy, never the department submission or CSE Master List.</div></div><div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="addAAReviewCopyItem()">Add Item</button></div></div>
-        <div class="card-body"><details><summary>Original Department Submission</summary><div id="aa-original-submission-notes" class="mt-12"></div><div class="table-wrap mt-12"><table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Quantity</th><th>Estimated Unit Cost</th><th>Total</th><th>Item Note</th></tr></thead><tbody id="aa-original-submission-items"></tbody></table></div></details></div>
-        <div class="card-body"><label class="department-notes-field">AA review notes<textarea class="filter-input" id="aa-review-copy-notes" maxlength="5000" rows="2" placeholder="Optional Academic Affairs notes"></textarea></label></div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Quantity</th><th>Estimated Unit Cost</th><th>Item Note</th><th>Action</th></tr></thead><tbody id="aa-review-copy-items"></tbody></table></div>
-        <div class="card-body"><div class="management-actions"><button class="btn btn-ghost" type="button" onclick="saveAAReviewCopy(false,this)">Save Draft</button><button class="btn btn-primary" type="button" onclick="saveAAReviewCopy(true,this)">Save and Mark Reviewed</button></div></div>
-      </div>
-    </div>
-  </section>
-
   <section class="panel" id="panel-app-dashboard">
     <div class="page-header"><div><div class="section-kicker">Annual Procurement Plan</div><h1>APP Dashboard</h1><p>Consolidation, APP review, APP-CSE approval, final approval, and completion.</p></div><button class="btn btn-primary" onclick="showPanel('apps')">View APP Plans</button></div>
     <div class="stat-grid">
@@ -1433,10 +1378,6 @@ let editingAvailableReportId = null;
 let activeReportQuery = '';
 let selectedPPMPRequestReport = null;
 let ppmpReportSavePromise = Promise.resolve();
-let departmentWishlistState = null;
-const departmentPPMPDrafts = new Map();
-let selectedDepartmentSubmissionId = null;
-let reviewCopyNewRowId = 0;
 
 // ─────────────────────────────────────────────
 // INIT
@@ -1565,9 +1506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const ppmpAllowed = allowed('ppmp.view'), appAllowed = allowed('app.view');
       document.getElementById('workspace-choice-ppmp').hidden = !ppmpAllowed;
       document.getElementById('workspace-choice-app').hidden = !appAllowed;
-      showPanel(allowed('ppmp.department_wishlist.view') && ['CED','CBM','CAS','CCSICT','CCJE','IAT','PS'].includes(currentUser.role)
-        ? 'department-wishlist'
-        : ppmpAllowed && appAllowed ? 'workspace-choice' : ppmpAllowed ? 'ppmp-dashboard' : 'app-dashboard');
+      showPanel(ppmpAllowed && appAllowed ? 'workspace-choice' : ppmpAllowed ? 'ppmp-dashboard' : 'app-dashboard');
     }
     initWebSocket();
   } finally {
@@ -1707,8 +1646,6 @@ async function loadCurrentUser() {
   document.getElementById('ppmp-items-nav').hidden = !allowed('ppmp.record.view');
   setHidden('ppmp-master-nav', !allowed('ppmp.view'));
   document.getElementById('ppmp-request-nav').hidden = !allowed('ppmp.order.view');
-  const departmentWishlistAllowed = allowed('ppmp.department_wishlist.view') && ['AA','CED','CBM','CAS','CCSICT','CCJE','IAT','PS'].includes(currentUser.role);
-  setHidden('department-wishlist-nav', !departmentWishlistAllowed);
   setHidden('consolidation-nav', currentUser.role === 'ADMIN' || !allowed('ppmp.consolidate'));
   document.getElementById('app-nav').hidden = !allowed('app.view');
   document.getElementById('reports-nav').hidden = !allowed('ppmp.report');
@@ -2600,7 +2537,6 @@ function showPanel(id, el) {
   if (id === 'admin-approval') refreshAccountAdministration();
   if (id === 'dashboard') loadAdminOverview();
   if (id === 'ppmp-dashboard') loadPPMPDashboard();
-  if (id === 'department-wishlist') loadDepartmentWishlist();
   if (id === 'app-dashboard') loadAPPDashboard();
   if (id === 'ppmp-requests') loadPPMPRequests();
   if (id === 'ppmp-wishlist') loadWishlist();
@@ -2899,285 +2835,6 @@ async function loadPPMPRequests() {
     const details = order.items.map(item => `<div><strong>${escapeHtml(item.item_name)}</strong> · ${escapeHtml(item.source_type)} · ${fmtNum(item.quantity)} ${escapeHtml(item.unit)} · ₱ ${fmt(item.estimated_budget)}</div>`).join('');
     return `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}<div class="text-xs text-muted">${escapeHtml(order.requester_name || 'Legacy requester')}</div></td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td><details><summary>${fmtNum(order.item_count)} item(s)</summary>${details}</details></td><td class="amount">₱ ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.current_stage)}</td><td>${escapeHtml(order.admin_note || order.remarks || '—')}</td><td><div class="management-actions">${ppmpOrderActions(order)}</div></td></tr>`;
   }).join('') : '<tr><td colspan="9">No submitted PPMP items.</td></tr>';
-}
-
-function departmentDraftKey(state = departmentWishlistState) {
-  return state && currentUser ? `${currentUser.id}:${state.department_code || currentUser.role}:${state.fiscal_year}` : null;
-}
-
-function getDepartmentDraft() {
-  const key = departmentDraftKey();
-  if (!key) return null;
-  if (!departmentPPMPDrafts.has(key)) {
-    departmentPPMPDrafts.set(key, { items: new Map(), notes: departmentWishlistState.submission?.notes || '' });
-  }
-  return departmentPPMPDrafts.get(key);
-}
-
-function captureDepartmentCatalog() {
-  const body = document.getElementById('department-catalog-list');
-  const draft = departmentPPMPDrafts.get(body?.dataset.draftKey);
-  if (!draft) return;
-  body.querySelectorAll('input[data-department-item]').forEach(checkbox => {
-    const id = Number(checkbox.dataset.departmentItem);
-    const row = checkbox.closest('tr');
-    draft.items.set(id, {
-      master_item_id: id,
-      selected: checkbox.checked,
-      quantity: row.querySelector('[data-department-quantity]')?.value || '',
-      remarks: row.querySelector('[data-department-remarks]')?.value || '',
-    });
-  });
-}
-
-function captureDepartmentDraft() {
-  captureDepartmentCatalog();
-  const body = document.getElementById('department-catalog-list');
-  const draft = departmentPPMPDrafts.get(body?.dataset.draftKey);
-  if (draft) draft.notes = document.getElementById('department-submission-notes').value;
-}
-
-function escapeDepartmentAttribute(value) {
-  return escapeHtml(String(value ?? '')).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-async function loadDepartmentWishlist() {
-  if (!currentUser || !(currentPermissions.includes('*') || currentPermissions.includes('ppmp.department_wishlist.view'))) return;
-  if (currentUser.role !== 'AA') captureDepartmentDraft();
-  const yearInput = document.getElementById('department-wishlist-year');
-  if (!yearInput.value) yearInput.value = new Date().getFullYear();
-  const fiscalYear = Number(yearInput.value);
-  if (!Number.isInteger(fiscalYear) || fiscalYear < 2000 || fiscalYear > 2100) {
-    return showToast('Enter a fiscal year between 2000 and 2100.', 'Department PPMP', 'warning');
-  }
-  try {
-    const data = await apiFetch(`${API}/department-wishlist?fiscal_year=${fiscalYear}`, { loadingMessage: 'Loading Department Wishlist...' });
-    departmentWishlistState = data;
-    const isAA = currentUser.role === 'AA';
-    document.getElementById('department-request-workspace').hidden = isAA;
-    document.getElementById('aa-department-workspace').hidden = !isAA;
-    if (isAA) {
-      document.getElementById('department-wishlist-title').textContent = 'Department Wishlist';
-      document.getElementById('department-wishlist-description').textContent = 'Review seven department responses and prepare the annual submission package.';
-      renderAADepartmentWishlist();
-    } else {
-      document.getElementById('department-wishlist-title').textContent = `${data.department_name} PPMP`;
-      document.getElementById('department-wishlist-description').textContent = 'Select CSE Master List items and submit one PPMP response for this fiscal year.';
-      renderDepartmentWishlist();
-    }
-  } catch (error) {
-    showToast(error.message, 'Department Wishlist', 'error');
-  }
-}
-
-function renderDepartmentWishlist() {
-  const submission = departmentWishlistState?.submission;
-  const status = document.getElementById('department-submission-status');
-  const builder = document.getElementById('department-request-builder');
-  const submittedCard = document.getElementById('department-submitted-items-card');
-  const itemsBody = document.getElementById('department-submitted-items');
-  const builderVisible = !submission || submission.status === 'No PPMP';
-  const draft = getDepartmentDraft();
-  builder.hidden = !builderVisible;
-  submittedCard.hidden = !submission || submission.status !== 'Submitted';
-  if (!submission) {
-    status.innerHTML = `<div class="section-kicker">${escapeHtml(departmentWishlistState.department_name)} · Fiscal Year ${departmentWishlistState.fiscal_year}</div><strong>No response recorded.</strong><div class="text-xs text-muted mt-8">Submit the department's CSE request or mark No PPMP for this fiscal year.</div>`;
-    itemsBody.innerHTML = '';
-    document.getElementById('department-submission-notes').value = draft.notes;
-  } else if (submission.status === 'No PPMP') {
-    status.innerHTML = `<div class="section-kicker">${escapeHtml(departmentWishlistState.department_name)} · Fiscal Year ${departmentWishlistState.fiscal_year}</div><strong>No PPMP recorded.</strong><div class="text-xs text-muted mt-8">You can still replace this response with a PPMP request before submitting items.</div>`;
-    itemsBody.innerHTML = '';
-    document.getElementById('department-submission-notes').value = draft.notes;
-  } else {
-    status.innerHTML = `<div class="section-kicker">${escapeHtml(departmentWishlistState.department_name)} · Fiscal Year ${departmentWishlistState.fiscal_year}</div><strong>Submitted to Academic Affairs</strong><div class="text-xs text-muted mt-8">${fmtNum(submission.item_count)} item(s) · ₱ ${fmt(submission.total_budget)} · ${submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : 'Submitted'}</div>${submission.notes ? `<div class="text-xs mt-8">${escapeHtml(submission.notes)}</div>` : ''}`;
-    document.getElementById('department-submission-notes').value = submission.notes || '';
-    itemsBody.innerHTML = (submission.items || []).map(item => `<tr><td><strong>${escapeHtml(item.item_name)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td>${fmtNum(item.quantity)}</td><td class="amount">₱ ${fmt(item.estimated_unit_cost)}</td><td class="amount">₱ ${fmt(item.total)}</td><td>${escapeHtml(item.remarks || '—')}</td></tr>`).join('') || '<tr><td colspan="7">No items were submitted.</td></tr>';
-  }
-  renderDepartmentCatalog();
-}
-
-function renderDepartmentCatalog() {
-  const body = document.getElementById('department-catalog-list');
-  if (!body || !departmentWishlistState || currentUser?.role === 'AA') return;
-  captureDepartmentCatalog();
-  const draft = getDepartmentDraft();
-  body.dataset.draftKey = departmentDraftKey();
-  const query = (document.getElementById('department-catalog-search')?.value || '').trim().toLowerCase();
-  const rows = (departmentWishlistState.available_items || []).filter(item =>
-    !query || [item.item_description, item.category, item.unit].some(value => String(value || '').toLowerCase().includes(query))
-  );
-  body.innerHTML = rows.length ? rows.map(item => {
-    const selection = draft.items.get(item.id);
-    return `<tr><td class="center"><input type="checkbox" data-department-item="${escapeDepartmentAttribute(item.id)}" ${selection?.selected ? 'checked' : ''} aria-label="Select ${escapeDepartmentAttribute(item.item_description)}" onchange="captureDepartmentDraft()"></td><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td><td><input class="filter-input department-item-input" type="number" min="0.01" step="0.01" value="${escapeDepartmentAttribute(selection?.quantity ?? 1)}" data-department-quantity="${escapeDepartmentAttribute(item.id)}" aria-label="Quantity for ${escapeDepartmentAttribute(item.item_description)}" oninput="captureDepartmentDraft()"></td><td><input class="filter-input department-item-input" maxlength="5000" value="${escapeDepartmentAttribute(selection?.remarks || '')}" data-department-remarks="${escapeDepartmentAttribute(item.id)}" aria-label="Item note for ${escapeDepartmentAttribute(item.item_description)}" placeholder="Optional" oninput="captureDepartmentDraft()"></td></tr>`;
-  }).join('') : '<tr><td colspan="7" class="department-empty">No available CSE Master List items match this search.</td></tr>';
-}
-
-async function submitDepartmentPPMP(button) {
-  if (currentUser?.role === 'AA') return;
-  captureDepartmentDraft();
-  const draftKey = departmentDraftKey();
-  const draft = getDepartmentDraft();
-  const fiscalYear = departmentWishlistState.fiscal_year;
-  const items = Array.from(draft.items.values()).filter(item => item.selected).map(({ selected, ...item }) => item);
-  if (!items.length) return showToast('Select at least one CSE Master List item.', 'Department PPMP', 'warning');
-  if (!confirm(`Submit ${items.length} selected item(s) to Academic Affairs for Fiscal Year ${departmentWishlistState.fiscal_year}? The original will be locked after submission.`)) return;
-  button.disabled = true;
-  try {
-    await apiFetch(`${API}/department-wishlist`, { method: 'POST', body: JSON.stringify({
-      fiscal_year: fiscalYear,
-      notes: draft.notes,
-      items,
-    }), loadingMessage: 'Submitting department PPMP to Academic Affairs...' });
-    departmentPPMPDrafts.delete(draftKey);
-    if (document.getElementById('department-catalog-list').dataset.draftKey === draftKey) {
-      delete document.getElementById('department-catalog-list').dataset.draftKey;
-    }
-    showToast('The department PPMP was submitted to Academic Affairs.', 'Department PPMP', 'success');
-    await loadDepartmentWishlist();
-  } catch (error) {
-    showToast(error.message, 'Department PPMP', 'error');
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function markDepartmentNoPPMP(button) {
-  if (currentUser?.role === 'AA') return;
-  captureDepartmentDraft();
-  const draftKey = departmentDraftKey();
-  const draft = getDepartmentDraft();
-  const fiscalYear = departmentWishlistState.fiscal_year;
-  const existing = departmentWishlistState?.submission;
-  if (existing?.status === 'Submitted') return showToast('A submitted PPMP is already recorded for this fiscal year.', 'Department PPMP', 'warning');
-  if (!confirm(`Mark ${departmentWishlistState.department_name} as No PPMP for Fiscal Year ${departmentWishlistState.fiscal_year}?`)) return;
-  button.disabled = true;
-  try {
-    await apiFetch(`${API}/department-wishlist`, { method: 'POST', body: JSON.stringify({
-      fiscal_year: fiscalYear,
-      no_ppmp: true,
-      notes: draft.notes,
-    }), loadingMessage: 'Recording No PPMP response...' });
-    departmentPPMPDrafts.delete(draftKey);
-    if (document.getElementById('department-catalog-list').dataset.draftKey === draftKey) {
-      delete document.getElementById('department-catalog-list').dataset.draftKey;
-    }
-    showToast('The No PPMP response was recorded.', 'Department PPMP', 'success');
-    await loadDepartmentWishlist();
-  } catch (error) {
-    showToast(error.message, 'Department PPMP', 'error');
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function renderAADepartmentWishlist() {
-  const state = departmentWishlistState;
-  if (!state || currentUser?.role !== 'AA') return;
-  const status = document.getElementById('department-package-status');
-  status.classList.toggle('ready', state.ready_to_submit);
-  status.textContent = state.ready_to_submit
-    ? `Fiscal Year ${state.fiscal_year} package is Ready to Submit. All ${state.department_count} departments have reported, and all submitted PPMP copies are reviewed.`
-    : `Fiscal Year ${state.fiscal_year}: ${state.reported_count} of ${state.department_count} departments reported; ${state.reviewed_count} submitted PPMP copy/copies reviewed. The package is still collecting responses or reviews.`;
-  const body = document.getElementById('aa-department-submissions');
-  body.innerHTML = (state.departments || []).map(department => {
-    const submission = department.submission;
-    const copy = department.review_copy;
-    const action = department.status === 'Submitted'
-      ? copy
-        ? `<button class="btn btn-primary btn-sm" type="button" onclick="openAAReviewCopy(${submission.id})">Open AA Copy</button>`
-        : `<button class="btn btn-ghost btn-sm" type="button" onclick="createAAReviewCopy(${submission.id},this)">Create Review Copy</button>`
-      : '<span class="text-xs text-muted">—</span>';
-    return `<tr><td><strong>${escapeHtml(department.department_name)}</strong></td><td><span class="pill ${department.status === 'Submitted' ? 'pill-blue' : department.status === 'No PPMP' ? 'pill-gold' : 'pill-red'}">${escapeHtml(department.status)}</span></td><td>${submission ? fmtNum(submission.item_count) : '—'}</td><td class="amount">${submission?.status === 'Submitted' ? `₱ ${fmt(submission.total_budget)}` : '—'}</td><td>${copy ? `<span class="pill ${copy.status === 'Reviewed' ? 'pill-green' : 'pill-gold'}">${escapeHtml(copy.status)}</span>` : '—'}</td><td>${action}</td></tr>`;
-  }).join('');
-  const activeSubmission = (state.departments || []).find(item => item.submission?.id === selectedDepartmentSubmissionId);
-  if (activeSubmission?.review_copy) renderAAReviewCopy(activeSubmission);
-  else if (!activeSubmission) document.getElementById('aa-review-copy-card').hidden = true;
-}
-
-async function createAAReviewCopy(submissionId, button) {
-  if (currentUser?.role !== 'AA') return;
-  button.disabled = true;
-  try {
-    await apiFetch(`${API}/department-wishlist/${submissionId}/review-copy`, { method: 'POST', body: JSON.stringify({}), loadingMessage: 'Creating Academic Affairs review copy...' });
-    selectedDepartmentSubmissionId = submissionId;
-    await loadDepartmentWishlist();
-    showToast('The editable AA copy was created. The department submission remains unchanged.', 'Department Wishlist', 'success');
-  } catch (error) {
-    showToast(error.message, 'Department Wishlist', 'error');
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function openAAReviewCopy(submissionId) {
-  selectedDepartmentSubmissionId = submissionId;
-  renderAADepartmentWishlist();
-  document.getElementById('aa-review-copy-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function aaReviewCopyRow(item = {}) {
-  const itemId = item.id || '';
-  const masterId = item.master_item_id || '';
-  return `<tr data-aa-review-row data-item-id="${escapeDepartmentAttribute(itemId)}" data-master-item-id="${escapeDepartmentAttribute(masterId)}"><td><input class="filter-input department-aa-input" data-aa-field="item_name" maxlength="5000" value="${escapeDepartmentAttribute(item.item_name || '')}" aria-label="PPMP item"></td><td><input class="filter-input department-aa-input" data-aa-field="category" maxlength="80" value="${escapeDepartmentAttribute(item.category || '')}" aria-label="Category"></td><td><input class="filter-input department-aa-input" data-aa-field="unit" maxlength="60" value="${escapeDepartmentAttribute(item.unit || '')}" aria-label="Unit"></td><td><input class="filter-input department-aa-input" data-aa-field="quantity" type="number" min="0.01" step="0.01" value="${escapeDepartmentAttribute(item.quantity ?? 1)}" aria-label="Quantity"></td><td><input class="filter-input department-aa-input" data-aa-field="estimated_unit_cost" type="number" min="0" step="0.01" value="${escapeDepartmentAttribute(item.estimated_unit_cost ?? 0)}" aria-label="Estimated unit cost"></td><td><input class="filter-input department-aa-notes" data-aa-field="remarks" maxlength="5000" value="${escapeDepartmentAttribute(item.remarks || '')}" aria-label="Item note"></td><td><button class="btn btn-danger btn-sm" type="button" onclick="this.closest('tr').remove()">Remove</button></td></tr>`;
-}
-
-function renderAAReviewCopy(department) {
-  const copy = department.review_copy;
-  if (!copy || currentUser?.role !== 'AA') return;
-  const card = document.getElementById('aa-review-copy-card');
-  card.hidden = false;
-  card.dataset.reviewCopyId = copy.id;
-  document.getElementById('aa-review-copy-title').textContent = `${department.department_name} · Fiscal Year ${departmentWishlistState.fiscal_year} · AA Copy (${copy.status})`;
-  document.getElementById('aa-original-submission-notes').textContent = department.submission.notes || 'No department notes.';
-  document.getElementById('aa-original-submission-items').innerHTML = (department.submission.items || []).map(item => `<tr><td><strong>${escapeHtml(item.item_name)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td>${fmtNum(item.quantity)}</td><td class="amount">₱ ${fmt(item.estimated_unit_cost)}</td><td class="amount">₱ ${fmt(item.total)}</td><td>${escapeHtml(item.remarks || '—')}</td></tr>`).join('') || '<tr><td colspan="7">No items were submitted.</td></tr>';
-  document.getElementById('aa-review-copy-notes').value = copy.notes || '';
-  document.getElementById('aa-review-copy-items').innerHTML = (copy.items || []).map(aaReviewCopyRow).join('');
-}
-
-function addAAReviewCopyItem() {
-  if (currentUser?.role !== 'AA' || document.getElementById('aa-review-copy-card').hidden) return;
-  reviewCopyNewRowId += 1;
-  const body = document.getElementById('aa-review-copy-items');
-  body.insertAdjacentHTML('beforeend', aaReviewCopyRow({ id: `new-${reviewCopyNewRowId}`, quantity: 1, estimated_unit_cost: 0 }));
-  const row = body.lastElementChild;
-  row.dataset.itemId = '';
-  row.dataset.masterItemId = '';
-  row.querySelector('[data-aa-field="item_name"]')?.focus();
-}
-
-async function saveAAReviewCopy(markReviewed, button) {
-  if (currentUser?.role !== 'AA') return;
-  if (markReviewed && !confirm('Save the edits and mark this department PPMP copy as reviewed?')) return;
-  const card = document.getElementById('aa-review-copy-card');
-  const reviewCopyId = Number(card.dataset.reviewCopyId);
-  const items = Array.from(document.querySelectorAll('#aa-review-copy-items tr[data-aa-review-row]')).map(row => {
-    const value = field => row.querySelector(`[data-aa-field="${field}"]`)?.value ?? '';
-    const masterId = row.dataset.masterItemId;
-    return {
-      id: row.dataset.itemId || null,
-      master_item_id: masterId || null,
-      item_name: value('item_name'),
-      category: value('category'),
-      unit: value('unit'),
-      quantity: value('quantity'),
-      estimated_unit_cost: value('estimated_unit_cost'),
-      remarks: value('remarks'),
-    };
-  });
-  button.disabled = true;
-  try {
-    await apiFetch(`${API}/department-wishlist/review-copies/${reviewCopyId}`, { method: 'PATCH', body: JSON.stringify({
-      notes: document.getElementById('aa-review-copy-notes').value,
-      items,
-      mark_reviewed: markReviewed,
-    }), loadingMessage: markReviewed ? 'Saving and completing Academic Affairs review...' : 'Saving Academic Affairs review copy...' });
-    showToast(markReviewed ? 'The AA copy is marked Reviewed.' : 'The AA copy was saved as a draft.', 'Department Wishlist', 'success');
-    await loadDepartmentWishlist();
-  } catch (error) {
-    showToast(error.message, 'Department Wishlist', 'error');
-  } finally {
-    button.disabled = false;
-  }
 }
 
 function ppmpRecordReviewActions(record) {
@@ -3729,3 +3386,4 @@ function fmtNum(n) {
 </script>
 </body>
 </html>
+

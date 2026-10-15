@@ -3,8 +3,8 @@
 **System:** Web-Based Procurement Management System  
 **Institution:** Isabela State University – Cauayan City  
 **Current revision date:** 2026-10-15  
-**Document version:** 2026.10.15-2  
-**Status basis:** Implemented source with verification evidence recorded per revision. The new Department PPMP workflow is locally verified through isolated backend, additive-schema, and Edge browser checks, subject to three confirmed pre-existing legacy UI test failures. Production PostgreSQL deployment has not been observed.  
+**Document version:** 2026.10.15-3  
+**Status basis:** The Department Wishlist removal is implemented and locally verified, subject to three legacy UI assertion failures reproduced on the exact pre-removal baseline `f498b89`. Earlier department implementation and activation evidence is historical and superseded. Render deployment has not been observed.  
 **Current account baseline:** One permanent active Administrator is preserved; later approved operational accounts may exist and remain role-scoped.  
 **Detailed historical record:** `SYSTEM_REVISION_RECORD.md`
 
@@ -34,7 +34,7 @@ PPMP submission request
 
 Wishlist requests/orders remain separate from PPMP planning records. A submitted Wishlist order is reviewed by the APP/Procurement role for consolidation, then by the Administrator; approved requesters receive an in-system notification. APP and APP (CSE) are also distinct plan types, but use the same controlled APP workflow and table structure.
 
-The Department PPMP workflow added on 2026-10-15 provides a separate annual intake path. The seven designated college departments submit CSE-based requests directly to AA. AA keeps the original submission and edits a separate review copy per department; its Department Wishlist collection shows Ready to Submit after all seven departments have responded and all submitted copies are Reviewed. This readiness state does not perform a downstream PPMP, consolidation, or APP submission.
+The dedicated Department Wishlist / Department PPMP annual intake and AA review-copy workflow added earlier on 2026-10-15 has been removed at the user's request. AA and retained college roles use the normal office PPMP permissions. Existing department accounts, role codes, office identity, and stored historical department workflow records are preserved.
 
 ## 2. Registration, Role, and Approval
 
@@ -55,7 +55,7 @@ The Department PPMP workflow added on 2026-10-15 provides a separate annual inta
 
 `users.role` is singular and unique. Pending, active, and suspended accounts retain the role reservation. Rejected or archived accounts release the active role into `released_role` while preserving the historical user row. This allows role transfer without deleting procurement authorship or approval history.
 
-The designated department roles are CED, CBM, CAS, CCSICT, CCJE, IAT, and PS. Their office and role codes must match, so one account represents each department. Administrator approval links or creates its structural Office row as needed; registration does not bypass approval or create sample procurement data.
+The retained college role codes are CED, CBM, CAS, CCSICT, CCJE, IAT, and PS. Their office and role codes must match, so one account represents each department. Administrator approval links or creates its structural Office row as needed; registration does not bypass approval or create sample procurement data. These accounts use normal office PPMP permissions after removal of the dedicated department workflow.
 
 ### Login behavior [IMPLEMENTED]
 
@@ -162,7 +162,7 @@ The digital PPMP form standardizes planning data, preserves drafts, prevents sub
 
 EO can send and monitor office PPMP requests, see submission states, review records, return incomplete work with a retained reason, and participate in APP review. This centralizes follow-up and makes responsibility and timing visible.
 
-AA also receives the seven designated departments' annual PPMP responses in Department Wishlist. It can create a reviewed working copy for each department while preserving the submitted original, and see which response or review still prevents the annual collection from being ready.
+AA retains its normal office PPMP access. The dedicated Department Wishlist collection, annual department intake, and review-copy actions have been removed.
 
 ### Procurement
 
@@ -204,7 +204,6 @@ The system centralizes procurement information, enforces consistent formats, sep
 | PPMP Draft | Office PPMP user | Work may span sessions | Flexible preparation with saved rows |
 | PPMP Request | EO | Manual follow-up | Central request/status monitoring |
 | PPMP Workflow | Office, EO, Procurement, Admin | Uncontrolled document routing | Validated state transitions and retained reasons |
-| Department PPMP collection | Seven designated departments, AA | Scattered annual requests and edits to originals | Department-scoped submission, separate AA copies, and explicit seven-department readiness |
 | Wishlist/Order separation | Office, Admin, Procurement | Planning rows mistaken for actual requests | Clear business entities and preserved source links |
 | Consolidation | Procurement | Re-encoding approved plans | One-time approved-source selection and traceability |
 | APP Digital Table | Procurement and reviewers | Generic/incomplete APP representation | Official 12-column structure, sections, and totals |
@@ -354,29 +353,13 @@ The dashboard's schema panel is a technical reference for entity relationships. 
 
 Mutating buttons are temporarily disabled while requests run to reduce duplicate submissions. A global loading indicator explains long actions. Login and Logout use an InfinityLoop SVG/CSS animation and an explicit `15_000` millisecond minimum measured with `performance.now()`; the timer text is hidden as requested. This native implementation is used because the application is Flask/Jinja rather than React/Vite and therefore cannot resolve `@/components/loading-ui/infinity`. Ordinary operations keep their request-length loader and do not inherit the 15-second hold. The loader starts hidden, closes in each request's `finally` path, resets after initialization and browser-history restoration, and has a 31-second defensive failsafe beyond the normal 30-second request timeout. The PPMP Dashboard and CSE Master List searches are deliberately different: they debounce input for 250 milliseconds, never display the blocking overlay, and ignore stale results from an older query. Jinja template auto-reload and no-store/no-cache HTML response headers prevent an older Login or authenticated Dashboard template from remaining active after a revision and server restart. The optional WebSocket URL is JSON-rendered so an empty configuration remains valid JavaScript and cannot stop initialization. Network calls have error handling and relevant export calls use server-generated files. Empty states show that no records exist; they do not create demonstration rows. Validation errors preserve the current UI and explain what must be corrected.
 
-### 11.28 Department PPMP and AA Department Wishlist [IMPLEMENTED]
+### 11.28 Department Wishlist removal [WITHDRAWN WORKFLOW]
 
-The new annual intake covers these seven units:
+The dedicated Department Wishlist / Department PPMP sidebar, panel, annual response form, collection readiness, and AA review-copy controls were removed on 2026-10-15 at the user's request. Their browser state, loaders, handlers, three API handlers, helper logic, and exclusive permissions were removed with the interface. AA and retained college roles use normal office PPMP permissions.
 
-| Code | Department |
-| --- | --- |
-| CED | College of Education |
-| CBM | College of Business and Management |
-| CAS | College of Arts and Sciences |
-| CCSICT | College of Computing Studies, Information and Communication Technology |
-| CCJE | College of Criminal Justice Education |
-| IAT | Institute of Agricultural Technology |
-| PS | Polytechnic School |
+The four historical `department_ppmp_*` model definitions and existing database tables/records are retained for preservation. They have no active department workflow API and are excluded from normal required-schema checks and new schema creation. WSGI startup no longer creates them. This removal changes no local or remote schema/data and requires no cleanup migration. Existing accounts, college codes, offices, and all normal modules are preserved.
 
-Each approved department account opens **Department PPMP**, selects a fiscal year, searches the shared CSE Master List, enters positive quantities and optional item/request notes, then chooses **Submit PPMP to Academic Affairs**. The server copies the catalog name, category, unit and estimated unit cost into that department's submitted snapshot. A department may instead choose **Mark No PPMP this year**. The database enforces one response for each department and year; No PPMP can later be replaced by the year's request, while an already submitted PPMP cannot be replaced or edited. Department accounts can read only their own original request and cannot use the existing order workflow to bypass this route.
-
-AA alone sees the **Department Wishlist** sidebar. For the selected fiscal year it shows all seven departments, their Submitted/No PPMP/Awaiting response, submitted lines and totals, and AA review state. A department submission or No PPMP response creates an in-system notification for AA. Administrator and other roles cannot enter this workflow through its API.
-
-AA uses **Create Review Copy** on a submitted PPMP. Only one copy exists for that original. AA can edit copied item names, categories, units, quantities, estimated unit costs and remarks, edit review notes, add/remove copied lines, save as Draft, and mark the copy Reviewed. The original department identity and fiscal year remain the collection's source identity. AA edits never update the original snapshot or shared CSE Master List. A later edit resets Reviewed to Draft until AA explicitly marks the updated copy Reviewed again. Review completion notifies the submitting department and records the reviewer and time.
-
-The annual collection becomes **Ready to Submit** only when every department has submitted or reported No PPMP and every submitted PPMP has a Reviewed AA copy. No PPMP responses need no copy. The collection retains separate department PPMPs, rather than combining their lines into one document. Ready to Submit is computed from the stored responses and copies; this revision does not select a downstream recipient, create an APP, or execute a final submission action.
-
-The isolated workflow test has verified submission routing, annual uniqueness, original/catalog preservation, AA review and collection readiness. Edge browser checks verified the main department and AA interactions with zero uncaught JavaScript errors. Local verification evidence and production deployment limits are recorded in Section 17.
+The earlier implementation and its verification are recorded as superseded history in Sections 17 and 18 and in `SYSTEM_REVISION_RECORD.md`.
 
 ## 12. Role and Permission Guide
 
@@ -384,16 +367,15 @@ The isolated workflow test has verified submission routing, annual uniqueness, o
 | --- | --- | --- | --- | --- |
 | Administrator | Global inspection and final PPMP decisions | Inspect resulting records; no operational batch creation | Global inspection, final approval/finalization, export; no draft creation | Account approval/status, audit, notifications, reports |
 | Office roles | Own-office PPMP draft, items, submit, Wishlist request, own-office reports/export | None | None unless a future permission is explicitly assigned | Own account only |
-| CED, CBM, CAS, CCSICT, CCJE, IAT, PS | Own annual department CSE-based PPMP request or No PPMP response; read own original | None | None | One account per department role; normal Administrator approval |
+| CED, CBM, CAS, CCSICT, CCJE, IAT, PS | Normal own-office PPMP permissions | None | None | Retained account/office identity and normal Administrator approval |
 | EO / AA | Request/monitor PPMP, review, comment, report/export | None | View, review/return at assigned stage, report/export | Survey management |
-| AA department intake | Exclusive Department Wishlist collection; create/edit/complete department review copies | Readiness only; no batch creation through this workflow | No APP creation through this workflow | Original submission and CSE values are preserved |
 | Procurement | View/review PPMP, approve for final PPMP stage, report/export | Create batch from eligible approved PPMP sources | View, create/edit/submit APP, review tools, comment, report/export | No account approval |
 | BAC Chairman | No general PPMP operational permissions | None | View, first APP review, return/reject, APP(CSE) review/approval permission, export | None |
 | Budget | PPMP view/review/comment/report | None | View, assigned APP review, return/reject, APP(CSE) review, export | None |
 
 Every role is singular per account. A role carrying both PPMP and APP permissions uses one login and one audit identity.
 
-Department roles receive only `ppmp.department_wishlist.view` and `ppmp.department_wishlist.submit`. AA receives view/review permissions in addition to its existing permissions. The AA-only checks apply even to the Administrator's general wildcard permissions.
+The exclusive `ppmp.department_wishlist.*` permissions and AA override have been removed. AA and retained college role codes receive normal `OFFICE_PERMISSIONS` through the existing office-role fallback.
 
 ## 13. Data Model and Record-Separation Guide
 
@@ -405,10 +387,10 @@ Department roles receive only `ppmp.department_wishlist.view` and `ppmp.departme
 | `ppmp_submission_requests` | EO/AA request for an office/year PPMP | Links to an office and optional PPMP record |
 | `ppmp_records` | Official office/year PPMP document | Unique office/year; retains preparer/reviewer/approver references |
 | `ppmp_record_items` | Twelve-column planning rows in one PPMP document | Deleted only with its parent record |
-| `department_ppmp_submissions` | Department/year Submitted or No PPMP response | Unique department/year; submitted original is read-only through the workflow API |
-| `department_ppmp_submission_items` | Original CSE item snapshot and requested quantity | Stored name/category/unit/cost survive later catalog edits; unique selected catalog item within a submission |
-| `department_ppmp_review_copies` | AA working copy and Draft/Reviewed completion | Unique original submission; retains creator, reviewer and timestamps |
-| `department_ppmp_review_items` | AA editable copied or added rows | Separate storage preserves source submission and CSE catalog; positive quantity/non-negative unit cost |
+| `department_ppmp_submissions` | Preserved historical department/year responses | Retired workflow storage; no active intake/review API; existing rows retained |
+| `department_ppmp_submission_items` | Preserved original CSE request snapshots | Retired workflow storage; existing rows retained |
+| `department_ppmp_review_copies` | Preserved historical AA working-copy headers | Retired workflow storage; existing rows retained |
+| `department_ppmp_review_items` | Preserved historical AA copied/added rows | Retired workflow storage; existing rows retained |
 | `ppmp_items` | Approved/materialized items for consolidation | Not the same as record rows or Wishlist requests |
 | `wishlist_items` | Reusable CSE Master List catalog | Custom order lines do not enter this table; legacy quantity remains stored but is not stock-limited in the current UI/workflow |
 | `wishlist_requests` | Preserved legacy single-item request link | Kept for migration/history compatibility |
@@ -443,15 +425,7 @@ Department roles receive only `ppmp.department_wishlist.view` and `ppmp.departme
 12. BAC Chairman, EO, Budget, and Administrator review in order. Any Return includes a correction reason.
 13. Administrator approves and finalizes. Authorized users export the APP PDF/Excel generated from the same database rows.
 
-### Department annual collection procedure
-
-1. Each designated department registers its matching Office/Role and receives normal Administrator account approval.
-2. Select the fiscal year in Department PPMP and submit CSE quantities to AA, or report No PPMP.
-3. AA opens Department Wishlist for the same year and checks all seven response states.
-4. For each Submitted request, AA creates a review copy, edits the copy as needed, saves Draft and marks Reviewed when complete.
-5. Confirm Ready to Submit after all seven departments have responded and each submitted request is Reviewed. Any later AA edit requires the affected copy to be reviewed again.
-
-The existing office PPMP, order, consolidation and APP procedures above continue independently. The department collection currently ends at readiness; further routing requires an explicit next-stage business rule.
+The dedicated department annual collection procedure has been withdrawn. AA and retained college accounts use their normally authorized office PPMP features; there is no Department Wishlist intake, review-copy, or collection-readiness step.
 
 ## 15. Installation, Startup, Migration, and Recovery
 
@@ -463,7 +437,7 @@ Use the project virtual environment, install the pinned Python requirements, and
 
 Before a schema revision, stop conflicting writers, back up the active SQLite file or create a MariaDB dump as applicable, and execute `python app.py --migrate-only`. Read the output and run schema verification before normal startup. Never use the reset option on live data.
 
-For the 2026-10-15 Department PPMP revision, the same command creates four new `department_ppmp_*` tables. Render PostgreSQL has a narrow startup exception: when the platform's built-in `RENDER=true` variable is present, WSGI creates only these four tables if missing using a transaction and PostgreSQL advisory lock, then performs normal read-only schema verification. It does not apply existing-table migrations or reset/seed/update existing records. This allows the current free service's Gunicorn command to start the revision without a paid pre-deploy step. Other installations use the existing additive migration command. Render describes its built-in flag in [Environment Variables and Secrets](https://render.com/docs/environment-variables). Implementation and isolated tests did not migrate or alter local/production databases, create department accounts, or insert real department requests.
+The Department Wishlist removal requires no migration. Its historical tables are excluded from new schema creation and normal required-schema verification. The Render-specific department table bootstrap has been removed; WSGI startup performs the normal read-only schema/connectivity verification. Existing historical department tables and records are preserved without cleanup, reset, or data migration.
 
 ### Backup and restore
 
@@ -493,13 +467,26 @@ This local archive keeps the master revision record, living Markdown and generat
 
 ## 17. Verification Record
 
+### 2026-10-15 Department Wishlist workflow removal
+
+- Python compilation of `app.py`, `models.py`, and `wsgi.py` passed; both Jinja templates validated.
+- The full regression suite ran 35 tests: 32 passed, three legacy UI assertions failed, and there were no errors or skips. The same activity-markup, Login-timer, and Available Reports assertion failures were reproduced on the exact pre-removal baseline `f498b89`.
+- Two replacement removal regressions and the final migration assertion passed: all three retired API paths returned 404 for AA, Administrator, and CED with GET/POST/PATCH; AA and retained college roles received normal `OFFICE_PERMISSIONS`; archived rows remained unchanged; startup and migration succeeded without retired tables and did not recreate them.
+- Headless Edge passed 105 checks across 12 roles: AA, all seven retained college roles, Cashier, Procurement, EO, and Administrator. AA's actual normal CSE item selection and normal PPMP submission succeeded. Normal profile/navigation/requests/reports/activity, Administrator accounts, and APP screens were exercised, with no retired API calls or uncaught JavaScript exceptions. The browser harness used an isolated in-memory database and disabled only the unused optional Socket.IO CDN dependency to avoid a network stall; product source was unchanged by that harness adjustment.
+- Read-only local database fingerprints were identical before and after removal for all 31 table schemas and all 223 records. Normal startup and SQLite `quick_check` passed. No live schema/data change was made.
+- Source AST comparison confirmed that no shared API route body or decorator changed. Shared-function changes were limited to permission fallback and startup/migration/reset detachment of the retired workflow.
+- The controlled PDF was regenerated from manual version `2026.10.15-3` and verified to contain 19 pages, extractable text, correct title metadata, the current removal marker and verification results, and a timestamp newer than the Markdown source.
+- These are local checks. Render deployment has not been observed. Earlier department workflow tests below describe the superseded implementation and do not verify this removal.
+
 ### 2026-10-15 Local Department PPMP schema activation
+
+**Historical evidence:** The department workflow was subsequently withdrawn. The tables and any stored records are preserved.
 
 Following the original implementation, the active local `ppmp/ppmp.sqlite` was backed up using SQLite online backup to `ppmp/backups/ppmp_before_department_schema_20261015_013250_261181.sqlite`. The existing `ensure_department_wishlist_schema()` routine created exactly the four missing department workflow tables, which remain empty. Per-table SHA-256 row fingerprints verified the backup and confirmed preservation of all 160 existing rows across 27 tables. SQLite `quick_check` and read-only startup verification through `initialize_database(apply_migrations=False)` both passed. No broader migrations, application behavior changes, account/demo-row creation, or remote database changes occurred. Implementation-stage statements below refer to the earlier implementation and isolated checks.
 
 ### 2026-10-15 Department PPMP revision
 
-- **Implementation status:** Implemented and locally verified, subject to three confirmed pre-existing legacy UI test failures. Production PostgreSQL deployment has not been observed.
+- **Historical implementation status:** Subsequently withdrawn by the Department Wishlist workflow removal. The following records the prior implementation's local verification, subject to three confirmed pre-existing legacy UI test failures. Production PostgreSQL deployment was not observed.
 - Focused isolated test `test_department_wishlist_routes_to_aa_and_review_copy_preserves_original` passed. It exercises department registration/approval, own-department intake, one-request-per-year enforcement, denial of legacy order bypass, AA review-copy editing, original/catalog preservation, all-seven response readiness, and Administrator denial.
 - Python compilation of `app.py` and `models.py` and validation of both Jinja templates passed.
 - The regression run executed 35 tests: 32 passed and three legacy UI assertions failed in activity-tracker markup, loading-overlay expectations, and primary PPMP navigation expectations. All three failures also occurred on the downloaded pre-revision GitHub baseline `da3e895`. The PDF-dependent test ran after PyPDF2 was installed.
@@ -529,10 +516,20 @@ Following the original implementation, the active local `ppmp/ppmp.sqlite` was b
 
 ## 18. System Revision History
 
+### Revision: Department Wishlist Workflow Removal
+
+- **Date:** 2026-10-15.
+- **Status:** Implemented and locally verified, subject to three legacy UI assertion failures reproduced on the exact pre-removal baseline `f498b89`; Render deployment has not been observed.
+- **Request:** Remove only the recently added department-to-AA workflow and its interface while preserving normal AA/office PPMP features, accounts, role codes, office identity, and all existing data.
+- **Affected modules:** Dedicated department sidebar/panel, browser state/loaders/handlers, three intake/review API handlers and helpers, exclusive permissions, Render department-table bootstrap, required-schema checks, and current operating documentation.
+- **Behavior:** AA and retained college roles use normal office PPMP permissions. The annual department submission, No PPMP response, AA copy editing/review, and collection-readiness workflow is withdrawn.
+- **Data/deployment:** Historical model definitions and the four existing department tables/records are retained; the tables are excluded from new schema creation and required-schema checks. This removal performs no local or remote schema/data change and requires no migration or cleanup.
+- **Evidence and limits:** Compilation, validation of both Jinja templates, two replacement removal regressions, the final migration assertion, and 105 isolated Edge checks across 12 roles passed. The full suite ran 35 tests: 32 passed, three legacy UI assertions also failed on exact pre-removal baseline `f498b89`, and there were no errors or skips. Read-only fingerprints preserved all 31 local table schemas and 223 records; normal startup and SQLite `quick_check` passed. Source AST comparison found no shared API body/decorator changes. Browser checks used an isolated in-memory database and disabled only the unused optional Socket.IO CDN in the harness. Render deployment has not been observed. Earlier implementation and activation evidence remains historical below.
+
 ### Revision: Department PPMP Intake and Academic Affairs Review Collection
 
 - **Date:** 2026-10-15.
-- **Status:** Implemented and locally verified, subject to three confirmed pre-existing legacy UI test failures; production PostgreSQL deployment has not been observed.
+- **Status:** Superseded by the Department Wishlist Workflow Removal. The following records the prior implementation and its local verification, subject to three confirmed pre-existing legacy UI test failures; production PostgreSQL deployment was not observed.
 - **Request:** Give CED, CBM, CAS, CCSICT, CCJE, IAT and PS one account each and one annual CSE-based PPMP response directed only to AA. AA reviews a separate editable copy per department and prepares a collection when all seven have responded.
 - **Affected modules:** Department registration/permissions, four new relational tables, authenticated intake/review APIs, Render PostgreSQL WSGI bootstrap, department/AA dashboard panels, notifications/audit, isolated regression, revision records and operating documentation.
 - **Behavior:** Submitted originals remain immutable through workflow routes; AA edits only its copy. Submitted or No PPMP is required for each department, and every submitted copy must be Reviewed before Ready to Submit. A later AA edit requires renewed review. The collection does not merge separate department PPMPs or perform an unspecified downstream submission.
