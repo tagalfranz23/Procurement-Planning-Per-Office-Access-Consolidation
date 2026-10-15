@@ -757,7 +757,7 @@ td.center{text-align:center}
   <!-- ══ ADMIN OVERVIEW ═════════════════════════════ -->
   {% if is_admin %}
   <section class="panel active" id="panel-dashboard">
-    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><button class="btn btn-primary" onclick="loadAdminOverview()">Refresh</button></div>
+    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><div class="action-row"><button class="btn btn-primary" onclick="showPanel('ppmp-wishlist')">Open PPMP Items</button><button class="btn btn-primary" onclick="loadAdminOverview()">Refresh</button></div></div>
     <div class="workspace-grid">
       <article class="workspace-card" onclick="showPanel('ppmp-dashboard')"><div class="section-kicker">PPMP Workspace</div><h2>PPMP Dashboard</h2><p>Submitted office requests, reviews, wishlist items, and procurement readiness.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-ppmp-total">0</strong><span>PPMP Records</span></div><div class="workspace-metric"><strong id="admin-ppmp-actions">0</strong><span>Pending Actions</span></div></div></article>
       <article class="workspace-card" onclick="showPanel('app-dashboard')"><div class="section-kicker">APP Workspace</div><h2>APP Dashboard</h2><p>APP drafts, review stages, APP-CSE, final approvals, and consolidation sources.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-app-total">0</strong><span>APP Plans</span></div><div class="workspace-metric"><strong id="admin-app-actions">0</strong><span>For Approval</span></div></div></article>
@@ -817,9 +817,11 @@ td.center{text-align:center}
         <p>Drafts, submissions, reviews, wishlist actions, and consolidation readiness.</p>
       </div>
       <div class="action-row">
+        {% if not is_admin %}
         <button class="btn btn-primary" onclick="showPanel('ppmp-wishlist')">
           Open PPMP Items
         </button>
+        {% endif %}
         {% if is_admin or current_role in ['EO', 'PROCUREMENT', 'BUDGET'] %}
         <button class="btn btn-navy" data-permission="ppmp.export" onclick="exportExcel()">
           📥 Export Excel
