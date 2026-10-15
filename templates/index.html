@@ -845,11 +845,13 @@ td.center{text-align:center}
       <div class="card-header"><span class="card-title">Recent PPMP Documents</span><button class="btn btn-ghost btn-sm" type="button" onclick="showPanel('ppmp-planning')">Open Documents</button></div>
       <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Wishlist Rows</th><th>Total Budget</th><th>Status</th></tr></thead><tbody id="ppmp-dashboard-records"><tr><td colspan="6">No PPMP documents available.</td></tr></tbody></table></div>
     </div>
+    {% if not is_admin %}
     <div class="card">
       <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="openCustomPPMPItem()">Add other items not included in the CSE Master list</button><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('ppmp-wishlist')">Review Current PPMP Items</button></div>{% endif %}</div>
       <div class="card-body"><div class="filter-row"><input class="filter-input" id="dashboard-wishlist-search" placeholder="Search item name, category, unit, or office…" oninput="queueDashboardWishlistSearch()"></div></div>
       <div class="table-wrap"><table><thead><tr><th>Item</th><th>Office / Source</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th></tr></thead><tbody id="dashboard-wishlist-list"><tr><td colspan="6">No CSE Master List items available.</td></tr></tbody></table></div>
     </div>
+    {% endif %}
   </section>
 
   <!-- ══ APP DASHBOARD ══════════════════════════════ -->
