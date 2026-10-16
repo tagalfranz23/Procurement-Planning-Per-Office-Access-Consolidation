@@ -1919,7 +1919,7 @@ async function rejectPendingUser(userId, button) {
   }
 }
 
-{% if is_admin %}
+// {% if is_admin %}
 function setAccountManagementMessage(id, message, success = false) {
   const element = document.getElementById(id);
   element.textContent = message;
@@ -2030,7 +2030,7 @@ async function resetAdminAccountPassword(event) {
     button.disabled = false;
   }
 }
-{% endif %}
+// {% endif %}
 
 async function refreshAccountAdministration() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
