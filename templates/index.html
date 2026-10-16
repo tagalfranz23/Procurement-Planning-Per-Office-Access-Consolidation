@@ -1080,7 +1080,10 @@ td.center{text-align:center}
 
   {% if not is_admin %}
   <section class="panel" id="panel-cse-selected-items">
-    <div class="page-header"><div><h1>Selected Items</h1></div></div>
+    <div class="page-header">
+      <div><h1>Selected Items</h1></div>
+      <div class="action-row"><button class="btn btn-primary" id="selected-items-add-custom-button" type="button" onclick="openCustomPPMPItem()">Add other items not included in the CSE Master list</button></div>
+    </div>
     <div class="card"><div class="card-header"><span class="card-title">Current PPMP Items</span></div><div class="card-body">
       <div class="filter-row"><input class="filter-input" id="order-year" type="number" min="2000" max="2100" aria-label="Fiscal Year" placeholder="Input Fiscal Year"><select class="filter-select" id="order-quarter"></select></div>
       <div class="table-wrap mt-12"><table><thead><tr><th>Item</th><th>Source</th><th>Quantity</th><th>Unit Cost</th><th>Total</th><th>Action</th></tr></thead><tbody id="order-draft-list"><tr><td colspan="6">Select items from the CSE Master List or use Add Item.</td></tr></tbody></table></div>
