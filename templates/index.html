@@ -840,7 +840,7 @@ td.center{text-align:center}
       <div class="stat-card green"><div class="stat-value" id="stat-consolidation-ready">0</div><div class="stat-label">Ready to Consolidate</div><div class="stat-icon">CO</div></div>
     </div>
     {% endif %}
-    <div class="card">
+    <div class="card"{% if not is_admin %} hidden{% endif %}>
       <div class="card-header"><span class="card-title">Recent PPMP Documents</span><button class="btn btn-ghost btn-sm" type="button" onclick="showPanel('ppmp-planning')">Open Documents</button></div>
       <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Wishlist Rows</th><th>Total Budget</th><th>Status</th></tr></thead><tbody id="ppmp-dashboard-records"><tr><td colspan="6">No PPMP documents available.</td></tr></tbody></table></div>
     </div>
