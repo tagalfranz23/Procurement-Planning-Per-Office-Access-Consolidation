@@ -1030,7 +1030,10 @@ td.center{text-align:center}
 
   {% if is_admin %}
   <section class="panel" id="panel-cse-add-item">
-    <div class="page-header"><div><h1>Add/Edit Item to CSE Master List</h1></div></div>
+    <div class="page-header">
+      <div><h1>Add/Edit Item to CSE Master List</h1></div>
+      <div class="action-row"><button class="btn btn-primary" id="cse-back-to-master-list-button" type="button" onclick="showPanel('ppmp-wishlist')">Back to CSE Master list</button></div>
+    </div>
     <div class="card" id="admin-wishlist-form-card">
       <div class="card-header"><div><span class="card-title" id="wishlist-form-title">Add Item to CSE Master List</span><div class="text-xs text-muted">Administrator-only catalog maintenance. Office users can request these items but cannot change the catalog.</div></div></div>
       <div class="card-body">
