@@ -378,9 +378,8 @@ def require_authenticated_api_user():
     if request.method == "OPTIONS":
         return None
     public_api = {
-        '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/register',
-        '/api/auth/available-roles', '/api/auth/registration-status',
-        '/api/auth/forgot-password', '/api/auth/reset-password',
+        '/api/auth/login', '/api/auth/logout', '/api/auth/me',
+        '/api/auth/registration-status',
     }
     user_id = session.get('user_id')
     if user_id:
@@ -1027,6 +1026,7 @@ def login():
 
 
 @app.route("/api/auth/register", methods=["POST"])
+@admin_required
 def register():
     data = request.get_json(silent=True) or {}
     first_name = (data.get("first_name") or "").strip()
@@ -1084,7 +1084,7 @@ def register():
     audit('account', user.id, 'ROLE_RESERVED', {'role': role})
     db.session.commit()
     return jsonify({
-        'message': 'Your account has been submitted for Administrator approval.',
+        'message': 'User account created and submitted for Administrator approval.',
         'account_status': 'PENDING',
         'registration_token': create_registration_token(user),
     }), 201
@@ -1171,6 +1171,7 @@ def admin_activity_log_tracker():
 
 
 @app.route('/api/auth/available-roles')
+@admin_required
 def available_roles():
     occupied = {role for (role,) in db.session.query(User.role).filter(User.role.isnot(None)).all()}
     roles = [role for role in configured_roles() if role != 'ADMIN' and role not in occupied]
@@ -1222,6 +1223,7 @@ def password_reset_digest(code):
 
 
 @app.route('/api/auth/forgot-password', methods=['POST'])
+@admin_required
 def forgot_password():
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
@@ -1235,6 +1237,7 @@ def forgot_password():
 
 
 @app.route('/api/auth/reset-password', methods=['POST'])
+@admin_required
 def reset_password():
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
@@ -1287,8 +1290,13 @@ def reset_password():
     add_notification([user], 'Password changed', 'Your password was changed through the recovery process.', 'success')
     audit('password_reset', reset_request.id, 'COMPLETED', {'user_id': user.id})
     db.session.commit()
-    session.clear()
-    return jsonify({'message': 'Password updated. You can now sign in using your new password.'})
+    resetting_current_account = session.get('user_id') == user.id
+    if resetting_current_account:
+        session.clear()
+    return jsonify({
+        'message': 'Password updated. The account can now sign in using the new password.',
+        'session_invalidated': resetting_current_account,
+    })
 
 
 @app.route("/api/admin/pending-users")

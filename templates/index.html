@@ -737,6 +737,9 @@ td.center{text-align:center}
     </div>
     {% endif %}
     {% if is_admin %}
+    <div class="nav-item" id="account-registration-nav" data-panel="account-registration" onclick="showPanel('account-registration',this)">
+      <span class="icon" aria-hidden="true">&#43;</span> Account Registration
+    </div>
     <div class="nav-item" id="admin-approval-nav" data-panel="admin-approval" onclick="showPanel('admin-approval',this)">
       <span class="icon" aria-hidden="true">&#10003;</span> Account Approval
       <span class="nav-badge approval-badge" id="pending-user-count">0</span>
@@ -903,6 +906,59 @@ td.center{text-align:center}
   </section>
 
   {% if is_admin %}
+  <section class="panel" id="panel-account-registration" aria-labelledby="account-registration-title">
+    <div class="page-header">
+      <div><h1 id="account-registration-title">Account Registration</h1><p>Create user accounts using the existing registration and approval process.</p></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Create User Account</span></div>
+      <div class="card-body">
+        <form id="admin-register-form" onsubmit="registerAdminAccount(event)">
+          <div class="form-grid">
+            <div class="form-group span2"><label class="form-label required" for="admin-register-full-name">Full name</label><input class="form-control" id="admin-register-full-name" autocomplete="name" required></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-email">Email</label><input class="form-control" id="admin-register-email" type="email" autocomplete="email" required></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-username">Username</label><input class="form-control" id="admin-register-username" autocomplete="username" required></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-office">Office</label><select class="form-control" id="admin-register-office" required><option value="">Select Office</option></select></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-role">Role</label><select class="form-control" id="admin-register-role" required><option value="">Select Role</option></select></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-password">Password (8+ characters)</label><input class="form-control" id="admin-register-password" type="password" autocomplete="new-password" minlength="8" required></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-confirm">Confirm password</label><input class="form-control" id="admin-register-confirm" type="password" autocomplete="new-password" minlength="8" required></div>
+          </div>
+          <div class="mt-12"><button class="btn btn-primary" type="submit">Create User Account</button></div>
+          <div class="text-xs mt-12" id="admin-register-message" role="alert"></div>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Password Recovery</span></div>
+      <div class="card-body">
+        <div id="admin-forgot-view">
+          <p class="text-xs text-muted">Email delivery is still being configured. Submitting this form does not create an Administrator approval request.</p>
+          <form id="admin-forgot-form" onsubmit="checkAdminPasswordRecovery(event)">
+            <div class="form-group"><label class="form-label required" for="admin-forgot-email">Registered email</label><input class="form-control" id="admin-forgot-email" type="email" autocomplete="email" required></div>
+            <div class="mt-12"><button class="btn btn-primary" type="submit">Check Recovery Availability</button></div>
+            <div class="text-xs mt-12" id="admin-forgot-message" role="alert"></div>
+          </form>
+          <button class="btn btn-ghost mt-12" type="button" onclick="showAdminPasswordReset(true)">I already have a reset code</button>
+        </div>
+        <div id="admin-reset-view" hidden>
+          <button class="btn btn-ghost" type="button" onclick="showAdminPasswordReset(false)">Back to Password Recovery</button>
+          <h2>Reset Password</h2>
+          <p class="text-xs text-muted">Enter a previously issued one-time reset code. Codes expire after 15 minutes and can only be used once.</p>
+          <form id="admin-reset-form" onsubmit="resetAdminAccountPassword(event)">
+            <div class="form-grid">
+              <div class="form-group"><label class="form-label required" for="admin-reset-email">Registered email</label><input class="form-control" id="admin-reset-email" type="email" autocomplete="email" required></div>
+              <div class="form-group"><label class="form-label required" for="admin-reset-code">One-time reset code</label><input class="form-control" id="admin-reset-code" autocomplete="one-time-code" required></div>
+              <div class="form-group"><label class="form-label required" for="admin-reset-password">New password (8+ characters)</label><input class="form-control" id="admin-reset-password" type="password" autocomplete="new-password" minlength="8" required></div>
+              <div class="form-group"><label class="form-label required" for="admin-reset-confirm">Confirm new password</label><input class="form-control" id="admin-reset-confirm" type="password" autocomplete="new-password" minlength="8" required></div>
+            </div>
+            <div class="mt-12"><button class="btn btn-primary" type="submit">Set New Password</button></div>
+            <div class="text-xs mt-12" id="admin-reset-message" role="alert"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-admin-approval" aria-labelledby="admin-approval-title">
     <div class="page-header">
       <div><h1 id="admin-approval-title">Account Approval</h1><p>Review new registrations before role access is activated.</p></div>
@@ -1705,6 +1761,7 @@ async function loadCurrentUser() {
   setHidden('app-create-card', currentUser.role !== 'PROCUREMENT' || !allowed('app.create'));
   setHidden('app-order-consolidation-card', currentUser.role !== 'PROCUREMENT' || !allowed('ppmp.consolidate'));
   setHidden('admin-approval-nav', currentUser.role !== 'ADMIN');
+  setHidden('account-registration-nav', currentUser.role !== 'ADMIN');
   if (currentUser.role === 'ADMIN') await refreshAccountAdministration();
 }
 
@@ -1833,6 +1890,119 @@ async function rejectPendingUser(userId, button) {
     showToast(error.message, 'Account Approval', 'error');
   }
 }
+
+{% if is_admin %}
+function setAccountManagementMessage(id, message, success = false) {
+  const element = document.getElementById(id);
+  element.textContent = message;
+  element.style.color = success ? 'var(--green)' : 'var(--red)';
+}
+
+async function loadAccountRegistrationOptions() {
+  if (currentUser?.role !== 'ADMIN') return;
+  try {
+    const data = await apiFetch(`${API}/auth/available-roles`);
+    const office = document.getElementById('admin-register-office');
+    const role = document.getElementById('admin-register-role');
+    const selectedOffice = office.value, selectedRole = role.value;
+    office.replaceChildren(new Option('Select Office', ''), ...data.offices.map(name => new Option(name, name)));
+    const options = data.role_options || data.roles.map(name => ({ name, available: true }));
+    role.replaceChildren(new Option('Select Role', ''), ...options.map(item => {
+      const option = new Option(item.name + (item.available ? '' : ' - Unavailable'), item.name);
+      option.disabled = !item.available;
+      return option;
+    }));
+    office.value = selectedOffice;
+    role.value = options.some(item => item.name === selectedRole && item.available) ? selectedRole : '';
+  } catch (error) {
+    showToast('Could not load the configured roles and offices. Please reopen Account Registration to try again.', 'Account Registration', 'error');
+  }
+}
+
+async function registerAdminAccount(event) {
+  event.preventDefault();
+  if (currentUser?.role !== 'ADMIN') return;
+  const form = event.target, field = name => document.getElementById(`admin-register-${name}`);
+  setAccountManagementMessage('admin-register-message', '');
+  if (field('password').value !== field('confirm').value) {
+    setAccountManagementMessage('admin-register-message', 'The password confirmation does not match.');
+    return;
+  }
+  const names = field('full-name').value.trim().split(/\s+/), first = names.shift(), last = names.pop() || first;
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await apiFetch(`${API}/auth/register`, {
+      method: 'POST', loadingMessage: 'Creating user account...',
+      body: JSON.stringify({
+        first_name: first, last_name: last, middle_name: names.join(' '),
+        email: field('email').value, username: field('username').value,
+        password: field('password').value, password_confirmation: field('confirm').value,
+        office: field('office').value, role: field('role').value,
+      }),
+    });
+    form.reset();
+    setAccountManagementMessage('admin-register-message', 'The account has been created and is waiting for Administrator approval. Use Account Approval to approve it before the user can log in.', true);
+    await Promise.all([loadAccountRegistrationOptions(), refreshAccountAdministration()]);
+  } catch (error) {
+    setAccountManagementMessage('admin-register-message', error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showAdminPasswordReset(showReset) {
+  if (currentUser?.role !== 'ADMIN') return;
+  if (showReset && document.getElementById('admin-forgot-email').value) {
+    document.getElementById('admin-reset-email').value = document.getElementById('admin-forgot-email').value;
+  }
+  document.getElementById('admin-forgot-view').hidden = showReset;
+  document.getElementById('admin-reset-view').hidden = !showReset;
+}
+
+async function checkAdminPasswordRecovery(event) {
+  event.preventDefault();
+  if (currentUser?.role !== 'ADMIN') return;
+  const button = event.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+  setAccountManagementMessage('admin-forgot-message', '');
+  try {
+    const email = document.getElementById('admin-forgot-email').value;
+    const data = await apiFetch(`${API}/auth/forgot-password`, {
+      method: 'POST', body: JSON.stringify({ email }), loadingMessage: 'Checking recovery availability...',
+    });
+    setAccountManagementMessage('admin-forgot-message', data.message, true);
+    document.getElementById('admin-reset-email').value = email;
+  } catch (error) {
+    setAccountManagementMessage('admin-forgot-message', error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function resetAdminAccountPassword(event) {
+  event.preventDefault();
+  if (currentUser?.role !== 'ADMIN') return;
+  const form = event.target, field = name => document.getElementById(`admin-reset-${name}`);
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  setAccountManagementMessage('admin-reset-message', '');
+  try {
+    const data = await apiFetch(`${API}/auth/reset-password`, {
+      method: 'POST', loadingMessage: 'Updating user password...',
+      body: JSON.stringify({ email: field('email').value, code: field('code').value,
+        password: field('password').value, password_confirmation: field('confirm').value }),
+    });
+    form.reset();
+    setAccountManagementMessage('admin-reset-message', data.message, true);
+    if (data.session_invalidated) window.location.assign('/');
+  } catch (error) {
+    setAccountManagementMessage('admin-reset-message', error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+{% endif %}
 
 async function refreshAccountAdministration() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
@@ -2645,6 +2815,7 @@ function openCSEMasterItemForm() {
 }
 
 function showPanel(id, el, reportQuery = null) {
+  if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${id}`)?.classList.add('active');
@@ -2666,6 +2837,7 @@ function showPanel(id, el, reportQuery = null) {
   if (id === 'consolidation') renderConsolidation();
   const reportsLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
   if (id === 'admin-approval') refreshAccountAdministration();
+  if (id === 'account-registration') loadAccountRegistrationOptions();
   if (id === 'dashboard') loadAdminOverview();
   if (id === 'ppmp-dashboard') loadPPMPDashboard();
   if (id === 'app-dashboard') loadAPPDashboard();

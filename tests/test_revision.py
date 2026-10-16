@@ -42,6 +42,10 @@ class RevisionRulesTest(unittest.TestCase):
         self.context.pop()
 
     def registration(self, **changes):
+        admin = User.query.filter_by(role='ADMIN').one()
+        with self.client.session_transaction() as session:
+            session['user_id'], session['role'] = admin.id, admin.role
+            session['auth_version'] = int(admin.auth_version or 0)
         payload = {'first_name': 'Procurement', 'last_name': 'Officer', 'email': 'procurement@isu.edu.ph',
                    'username': 'procurement', 'password': 'password123', 'role': 'PROCUREMENT',
                    'password_confirmation': 'password123', 'office': 'PROCUREMENT'}
@@ -126,10 +130,21 @@ class RevisionRulesTest(unittest.TestCase):
         db.session.commit()
         recovery_client = application.app.test_client()
         login_html = recovery_client.get('/').get_data(as_text=True)
-        self.assertIn('Forgot Password?', login_html)
-        self.assertIn('id="forgot-view"', login_html)
-        self.assertIn('id="reset-view"', login_html)
-        self.assertIn('Email delivery is still being configured', login_html)
+        self.assertNotIn('Forgot Password?', login_html)
+        self.assertNotIn('id="forgot-view"', login_html)
+        self.assertNotIn('id="reset-view"', login_html)
+        self.assertEqual(recovery_client.post(
+            '/api/auth/forgot-password', json={'email': user.email},
+        ).status_code, 401)
+
+        admin = User.query.filter_by(role='ADMIN').one()
+        with recovery_client.session_transaction() as session:
+            session['user_id'], session['role'] = admin.id, admin.role
+            session['auth_version'] = int(admin.auth_version or 0)
+        admin_html = recovery_client.get('/').get_data(as_text=True)
+        self.assertIn('id="admin-forgot-view"', admin_html)
+        self.assertIn('id="admin-reset-view"', admin_html)
+        self.assertIn('Email delivery is still being configured', admin_html)
 
         known = recovery_client.post('/api/auth/forgot-password', json={'email': user.email})
         unknown = recovery_client.post('/api/auth/forgot-password', json={'email': 'unknown@isu.edu.ph'})
@@ -196,7 +211,7 @@ class RevisionRulesTest(unittest.TestCase):
                              '/api/ppmp-records', '/api/ppmp-orders', '/api/wishlist',
                              '/api/reports/available', '/api/reports/ppmp-orders',
                              '/api/activity-log', '/api/notifications', '/api/metadata',
-                             '/api/auth/available-roles', '/api/colleges'):
+                             '/api/colleges'):
                     with self.subTest(path=path):
                         response = self.client.get(path)
                         self.assertEqual(response.status_code, 200, response.get_data(as_text=True)[:500])
@@ -204,7 +219,7 @@ class RevisionRulesTest(unittest.TestCase):
                 for removed in ('panel-department-wishlist', 'department-wishlist-nav',
                                 '/api/department-wishlist', 'AA Review Copy', 'Mark No PPMP'):
                     self.assertNotIn(removed, dashboard)
-                for path in ('/api/apps', '/api/dashboard/app', '/api/admin/pending-users',
+                for path in ('/api/auth/available-roles', '/api/apps', '/api/dashboard/app', '/api/admin/pending-users',
                              '/api/admin/activity-log', '/api/admin/audit-log'):
                     expected_status = 200 if user.role == 'ADMIN' else 403
                     with self.subTest(path=path):
@@ -848,13 +863,16 @@ class RevisionRulesTest(unittest.TestCase):
     def test_registration_status_flow_uses_signed_reference_and_system_notification(self):
         login_html = self.client.get('/').get_data(as_text=True)
         self.assertNotIn('<label for="role">Available role</label>', login_html)
-        self.assertIn('<label for="role">Role</label>', login_html)
-        self.assertIn('id="register-confirm"', login_html)
+        self.assertNotIn('id="register-form"', login_html)
+        self.assertNotIn('id="register-confirm"', login_html)
         self.assertIn('Check Account Status', login_html)
         self.assertIn('Registration Successful', login_html)
 
         registered = self.registration()
         self.assertEqual(registered.status_code, 201)
+        admin_html = self.client.get('/').get_data(as_text=True)
+        self.assertIn('for="admin-register-role">Role</label>', admin_html)
+        self.assertIn('id="admin-register-confirm"', admin_html)
         registration_token = registered.get_json()['registration_token']
         self.assertTrue(registration_token)
         pending = self.client.post(
