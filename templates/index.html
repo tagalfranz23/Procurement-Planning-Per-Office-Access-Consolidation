@@ -674,7 +674,7 @@ td.center{text-align:center}
   </div>
   <div class="topbar-right">
     <div class="fiscal-badge">FY <span id="fiscal-year">2025</span></div>
-    <div class="ws-badge">
+    <div class="ws-badge" role="status" aria-live="polite" aria-atomic="true">
       <div class="ws-dot" id="ws-dot"></div>
       <span id="ws-label">Offline</span>
     </div>
@@ -739,10 +739,6 @@ td.center{text-align:center}
     {% if is_admin %}
     <div class="nav-item" id="account-registration-nav" data-panel="account-registration" onclick="showPanel('account-registration',this)">
       <span class="icon" aria-hidden="true">&#43;</span> Account Registration
-    </div>
-    <div class="nav-item" id="admin-approval-nav" data-panel="admin-approval" onclick="showPanel('admin-approval',this)">
-      <span class="icon" aria-hidden="true">&#10003;</span> Account Approval
-      <span class="nav-badge approval-badge" id="pending-user-count">0</span>
     </div>
     {% endif %}
     <div class="nav-item" id="app-nav" data-panel="apps" onclick="showPanel('apps',this)" hidden>
@@ -929,6 +925,10 @@ td.center{text-align:center}
       </div>
     </div>
     <div class="card">
+      <div class="card-header"><span class="card-title">Pending Account Registrations</span><div class="flex gap-8"><span class="nav-badge approval-badge" id="pending-user-count">0</span><button class="btn btn-primary" type="button" onclick="refreshAccountAdministration()">Refresh</button></div></div>
+      <div class="card-body"><div class="approval-list" id="pending-user-list"><div class="loading"><div class="spinner"></div>Loading accounts...</div></div></div>
+    </div>
+    <div class="card">
       <div class="card-header"><span class="card-title">Password Recovery</span></div>
       <div class="card-body">
         <div id="admin-forgot-view">
@@ -957,14 +957,6 @@ td.center{text-align:center}
         </div>
       </div>
     </div>
-  </section>
-
-  <section class="panel" id="panel-admin-approval" aria-labelledby="admin-approval-title">
-    <div class="page-header">
-      <div><h1 id="admin-approval-title">Account Approval</h1><p>Review new registrations before role access is activated.</p></div>
-      <button class="btn btn-primary" type="button" onclick="refreshAccountAdministration()">Refresh</button>
-    </div>
-    <div class="card"><div class="card-header"><span class="card-title">Pending Account Registrations</span></div><div class="card-body"><div class="approval-list" id="pending-user-list"><div class="loading"><div class="spinner"></div>Loading accounts...</div></div></div></div>
   </section>
 
   {% endif %}
@@ -1592,6 +1584,7 @@ function initWishlistUnitPicker() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  initConnectionStatus();
   initWishlistUnitPicker();
   try {
     document.getElementById('fiscal-year').textContent = new Date().getFullYear();
@@ -1625,20 +1618,65 @@ window.addEventListener('pageshow', event => {
 // ─────────────────────────────────────────────
 // WEBSOCKET
 // ─────────────────────────────────────────────
-function initWebSocket() {
-  if (!WS) {
-    setWsStatus(false);
-    return;
+function setConnectionStatus(connected) {
+  document.getElementById('ws-dot').className = 'ws-dot' + (connected ? ' connected' : '');
+  document.getElementById('ws-label').textContent = connected ? 'Online' : 'Offline';
+}
+
+function initConnectionStatus() {
+  let activeCheck = null;
+
+  async function checkConnection() {
+    if (activeCheck) activeCheck.abort();
+    activeCheck = null;
+    if (navigator.onLine === false) {
+      setConnectionStatus(false);
+      return;
+    }
+    const controller = new AbortController();
+    activeCheck = controller;
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      // Check the Flask app independently of the optional notification hub.
+      const response = await fetch(`${API}/auth/me`, {
+        credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+      });
+      if (activeCheck === controller) {
+        const reachable = response.ok || response.status === 401 || response.status === 403;
+        setConnectionStatus(navigator.onLine !== false && reachable);
+      }
+    } catch (error) {
+      if (activeCheck === controller) setConnectionStatus(false);
+    } finally {
+      clearTimeout(timeout);
+      if (activeCheck === controller) activeCheck = null;
+    }
   }
+
+  window.addEventListener('offline', () => {
+    if (activeCheck) activeCheck.abort();
+    activeCheck = null;
+    setConnectionStatus(false);
+  });
+  window.addEventListener('online', checkConnection);
+  window.addEventListener('pageshow', checkConnection);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkConnection();
+  });
+  setInterval(() => {
+    if (!document.hidden) checkConnection();
+  }, 30000);
+  checkConnection();
+}
+
+function initWebSocket() {
+  if (!WS) return;
   try {
     socket = io(WS, { transports: ['websocket','polling'], reconnection: false, timeout: 5000 });
 
     socket.on('connect', () => {
-      setWsStatus(true);
       showToast('Connected to live notification hub', 'WebSocket', 'success');
     });
-    socket.on('disconnect', () => setWsStatus(false));
-    socket.on('connect_error', () => setWsStatus(false));
 
     socket.on('ppmp_notification', (data) => {
       addNotification(data);
@@ -1647,18 +1685,9 @@ function initWebSocket() {
         if (currentPermissions.includes('*') || currentPermissions.includes('ppmp.order.view')) loadPPMPRequests();
       }
     });
-    socket.on('user_count', (data) => {
-      document.getElementById('ws-label').textContent = `${data.count} user${data.count !== 1 ? 's' : ''} live`;
-    });
   } catch(e) {
-    setWsStatus(false);
     console.warn('WebSocket unavailable');
   }
-}
-
-function setWsStatus(connected) {
-  document.getElementById('ws-dot').className = 'ws-dot' + (connected ? ' connected' : '');
-  if (!connected) document.getElementById('ws-label').textContent = 'Offline';
 }
 
 function wsBroadcast(action, item, college) {
@@ -1760,7 +1789,6 @@ async function loadCurrentUser() {
   setHidden('ppmp-record-create-card', !currentPermissions.includes('ppmp.record.create'));
   setHidden('app-create-card', currentUser.role !== 'PROCUREMENT' || !allowed('app.create'));
   setHidden('app-order-consolidation-card', currentUser.role !== 'PROCUREMENT' || !allowed('ppmp.consolidate'));
-  setHidden('admin-approval-nav', currentUser.role !== 'ADMIN');
   setHidden('account-registration-nav', currentUser.role !== 'ADMIN');
   if (currentUser.role === 'ADMIN') await refreshAccountAdministration();
 }
@@ -1942,7 +1970,7 @@ async function registerAdminAccount(event) {
       }),
     });
     form.reset();
-    setAccountManagementMessage('admin-register-message', 'The account has been created and is waiting for Administrator approval. Use Account Approval to approve it before the user can log in.', true);
+    setAccountManagementMessage('admin-register-message', 'The account has been created and is waiting for Administrator approval. Review it in Pending Account Registrations below before the user can log in.', true);
     await Promise.all([loadAccountRegistrationOptions(), refreshAccountAdministration()]);
   } catch (error) {
     setAccountManagementMessage('admin-register-message', error.message);
@@ -2836,8 +2864,10 @@ function showPanel(id, el, reportQuery = null) {
 
   if (id === 'consolidation') renderConsolidation();
   const reportsLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
-  if (id === 'admin-approval') refreshAccountAdministration();
-  if (id === 'account-registration') loadAccountRegistrationOptions();
+  if (id === 'account-registration') {
+    loadAccountRegistrationOptions();
+    refreshAccountAdministration();
+  }
   if (id === 'dashboard') loadAdminOverview();
   if (id === 'ppmp-dashboard') loadPPMPDashboard();
   if (id === 'app-dashboard') loadAPPDashboard();

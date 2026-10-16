@@ -173,6 +173,21 @@ class AdminAccountSecurityTests(unittest.TestCase):
         self.assertNotIn('ADMIN', roles.get_json()['roles'])
         self.assertNotIn('CBAO', roles.get_json()['roles'])
 
+    def test_existing_approval_controls_are_inside_account_registration(self):
+        self.authenticate()
+        html = self.client.get('/').get_data(as_text=True)
+        panel = html.split('<section class="panel" id="panel-account-registration"', 1)[1].split('</section>', 1)[0]
+        for required in ('Pending Account Registrations', 'id="pending-user-list"',
+                         'id="pending-user-count"', 'onclick="refreshAccountAdministration()"'):
+            self.assertIn(required, panel)
+        self.assertEqual(html.count('id="pending-user-list"'), 1)
+        self.assertEqual(html.count('id="pending-user-count"'), 1)
+        self.assertNotIn('id="admin-approval-nav"', html)
+        self.assertNotIn('id="panel-admin-approval"', html)
+        self.assertIn('onclick="approvePendingUser(${user.id}, this)"', html)
+        self.assertIn('onclick="rejectPendingUser(${user.id}, this)"', html)
+        self.assertIn('onclick="togglePendingUser(${user.id})"', html)
+
     def test_admin_creates_hashed_pending_account_in_existing_user_model(self):
         self.authenticate()
         response = self.register()
