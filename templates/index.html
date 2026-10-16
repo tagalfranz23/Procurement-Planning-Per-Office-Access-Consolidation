@@ -721,13 +721,15 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="ppmp-master-nav" data-panel="ppmp-wishlist" onclick="showPanel('ppmp-wishlist',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} CSE Master List
-      {% if is_admin %}<button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>{% endif %}
+      <button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>
     </div>
-    {% if is_admin %}
     <div class="cse-submenu" id="cse-master-submenu" hidden>
+      {% if is_admin %}
       <button class="nav-item" id="cse-add-item-nav" type="button" data-panel="cse-add-item" onclick="openCSEMasterItemForm()">Add/Edit Item</button>
+      {% else %}
+      <button class="nav-item" id="cse-user-add-item-nav" type="button" data-panel="cse-user-add-item" data-permission="ppmp.view" onclick="openCustomPPMPItem()">Add Item</button>
+      {% endif %}
     </div>
-    {% endif %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Requests
     </div>
@@ -822,8 +824,8 @@ td.center{text-align:center}
       </div>
       <div class="action-row">
         {% if not is_admin %}
-        <button class="btn btn-primary" onclick="showPanel('ppmp-wishlist')">
-          Open PPMP Items
+        <button class="btn btn-primary" id="dashboard-add-custom-item-button" type="button" onclick="openCustomPPMPItem()">
+          Add other items not included in the CSE Master list
         </button>
         {% endif %}
       </div>
@@ -846,7 +848,7 @@ td.center{text-align:center}
     </div>
     {% if not is_admin %}
     <div class="card">
-      <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="openCustomPPMPItem()">Add other items not included in the CSE Master list</button><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('ppmp-wishlist')">Review Current PPMP Items</button></div>{% endif %}</div>
+      <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('ppmp-wishlist')">Review Current PPMP Items</button></div>{% endif %}</div>
       <div class="card-body"><div class="filter-row"><input class="filter-input" id="dashboard-wishlist-search" placeholder="Search item name, category, unit, or office…" oninput="queueDashboardWishlistSearch()"></div></div>
       <div class="table-wrap"><table><thead><tr><th>Item</th><th>Office / Source</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th></tr></thead><tbody id="dashboard-wishlist-list"><tr><td colspan="6">No CSE Master List items available.</td></tr></tbody></table></div>
     </div>
@@ -1065,6 +1067,16 @@ td.center{text-align:center}
   </section>
   {% endif %}
 
+  {% if not is_admin %}
+  <section class="panel" id="panel-cse-user-add-item">
+    <div class="page-header">
+      <div><h1>Add Item</h1></div>
+      <div class="action-row"><button class="btn btn-primary" type="button" onclick="showPanel('ppmp-wishlist')">Review Current PPMP Items</button></div>
+    </div>
+    <div class="card"><div class="card-header"><span class="card-title">Add other items not included in the CSE Master list</span></div><div class="card-body"><div class="filter-row"><input class="filter-input" id="custom-item-name" placeholder="Item name"><select class="filter-select" id="custom-item-category" aria-label="Category"><option value="">Select Category</option><option value="Goods">Goods</option><option value="Infrastructure">Infrastructure</option><option value="Consulting Services">Consulting Services</option></select><input class="filter-input" id="custom-item-unit" placeholder="Unit"><input class="filter-input" id="custom-item-quantity" type="number" min="0.01" placeholder="Quantity"><input class="filter-input" id="custom-item-cost" type="number" min="0" placeholder="Estimated unit price"><button class="btn btn-primary" type="button" onclick="addCustomOrderItem(this)">Add Item</button></div><p class="text-xs text-muted mt-8">This item belongs only to this request and is not added to the CSE Master List.</p></div></div>
+  </section>
+  {% endif %}
+
   <section class="panel" id="panel-ppmp-wishlist">
     <div class="page-header">
       <div>
@@ -1080,7 +1092,6 @@ td.center{text-align:center}
       <div class="table-wrap mt-12"><table><thead><tr><th>Item</th><th>Source</th><th>Quantity</th><th>Unit Cost</th><th>Total</th><th>Action</th></tr></thead><tbody id="order-draft-list"><tr><td colspan="6">Select a CSE Master List entry or add another item below.</td></tr></tbody></table></div>
       <div class="management-actions mt-12"><button class="btn btn-primary" id="submit-order-button" onclick="submitPPMPOrder(this)" disabled>Submit PPMP Request</button></div>
     </div></div>
-    <div class="card"><div class="card-header"><span class="card-title">Add other items not included in the CSE Master list</span></div><div class="card-body"><div class="filter-row"><input class="filter-input" id="custom-item-name" placeholder="Item name"><select class="filter-select" id="custom-item-category" aria-label="Category"><option value="">Select Category</option><option value="Goods">Goods</option><option value="Infrastructure">Infrastructure</option><option value="Consulting Services">Consulting Services</option></select><input class="filter-input" id="custom-item-unit" placeholder="Unit"><input class="filter-input" id="custom-item-quantity" type="number" min="0.01" placeholder="Quantity"><input class="filter-input" id="custom-item-cost" type="number" min="0" placeholder="Estimated unit price"><button class="btn btn-primary" onclick="addCustomOrderItem(this)">Add Item</button></div><p class="text-xs text-muted mt-8">This item belongs only to this request and is not added to the CSE Master List.</p></div></div>
     {% endif %}
 
     <div class="card">
@@ -2833,7 +2844,7 @@ function setCSEMasterMenuExpanded(expanded) {
 
 function toggleCSEMasterMenu(event) {
   event.stopPropagation();
-  if (currentUser?.role !== 'ADMIN') return;
+  if (!currentUser || !hasClientPermission('ppmp.view')) return;
   const submenu = document.getElementById('cse-master-submenu');
   if (submenu) setCSEMasterMenuExpanded(submenu.hidden);
 }
@@ -2847,6 +2858,7 @@ function openCSEMasterItemForm() {
 
 function showPanel(id, el, reportQuery = null) {
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
+  if (id === 'cse-user-add-item' && (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.view'))) return;
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${id}`)?.classList.add('active');
@@ -2860,9 +2872,9 @@ function showPanel(id, el, reportQuery = null) {
     setAdminOverviewMenuExpanded(true);
     if (id !== 'dashboard') document.getElementById('admin-dashboard-nav')?.classList.add('active');
   }
-  if (id === 'ppmp-wishlist' || id === 'cse-add-item') {
+  if (id === 'ppmp-wishlist' || id === 'cse-add-item' || id === 'cse-user-add-item') {
     setCSEMasterMenuExpanded(true);
-    if (id === 'cse-add-item') document.getElementById('ppmp-master-nav')?.classList.add('active');
+    if (id === 'cse-add-item' || id === 'cse-user-add-item') document.getElementById('ppmp-master-nav')?.classList.add('active');
   }
 
   if (id === 'consolidation') renderConsolidation();
@@ -2988,7 +3000,8 @@ async function loadDashboardWishlist(showLoading = false) {
 }
 
 function openCustomPPMPItem() {
-  showPanel('ppmp-wishlist');
+  if (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.view')) return;
+  showPanel('cse-user-add-item');
   setTimeout(() => document.getElementById('custom-item-name')?.focus(), 0);
 }
 
