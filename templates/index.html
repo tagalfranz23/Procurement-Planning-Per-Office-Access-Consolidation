@@ -816,11 +816,6 @@ td.center{text-align:center}
           Open PPMP Items
         </button>
         {% endif %}
-        {% if is_admin or current_role in ['EO', 'PROCUREMENT', 'BUDGET'] %}
-        <button class="btn btn-navy" data-permission="ppmp.export" onclick="exportExcel()">
-          📥 Export Excel
-        </button>
-        {% endif %}
       </div>
     </div>
 
