@@ -132,6 +132,12 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .nav-item:hover{background:var(--sky);color:var(--blue)}
 .nav-item.active{background:var(--sky);color:var(--blue);font-weight:600}
 .nav-item .icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.cse-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.cse-submenu-toggle:hover,.cse-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.cse-submenu-toggle span{transition:transform .15s}
+.cse-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.cse-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.cse-submenu .nav-item:hover,.cse-submenu .nav-item.active{background:var(--sky)}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
 .approval-badge{background:var(--gold);color:var(--navy-deep)}
@@ -698,7 +704,13 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="ppmp-master-nav" data-panel="ppmp-wishlist" onclick="showPanel('ppmp-wishlist',this)" hidden>
       {% if is_admin %}<span class="icon">WL</span>{% endif %} CSE Master List
+      {% if is_admin %}<button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>{% endif %}
     </div>
+    {% if is_admin %}
+    <div class="cse-submenu" id="cse-master-submenu" hidden>
+      <button class="nav-item" id="cse-add-item-nav" type="button" data-panel="cse-add-item" onclick="openCSEMasterItemForm()">Add Item to CSE Master List</button>
+    </div>
+    {% endif %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       {% if is_admin %}<span class="icon">RQ</span>{% endif %} PPMP Requests
     </div>
@@ -766,34 +778,6 @@ td.center{text-align:center}
       <div class="stat-card orange"><div class="stat-value" id="admin-pending-accounts">0</div><div class="stat-label">Pending Accounts</div><div class="stat-icon">👤</div></div>
       <div class="stat-card gold"><div class="stat-value" id="admin-order-actions">0</div><div class="stat-label">Pending PPMP Items</div><div class="stat-icon">RQ</div></div>
       <div class="stat-card green"><div class="stat-value" id="admin-approved-total">0</div><div class="stat-label">Approved PPMP</div><div class="stat-icon">✓</div></div>
-    </div>
-    <div class="card" id="admin-wishlist-form-card">
-      <div class="card-header"><div><span class="card-title" id="wishlist-form-title">Add Item to CSE Master List</span><div class="text-xs text-muted">Administrator-only catalog maintenance. Office users can request these items but cannot change the catalog.</div></div></div>
-      <div class="card-body">
-        <div class="filter-row">
-          <input class="filter-input" id="wishlist-description" maxlength="3000" placeholder="Item description">
-          <input class="filter-input" id="wishlist-category" maxlength="80" placeholder="Category">
-          <div class="unit-picker" id="wishlist-unit-picker">
-            <input class="filter-input" id="wishlist-unit" maxlength="60" placeholder="Unit" role="combobox" aria-autocomplete="list" aria-controls="wishlist-unit-options" aria-expanded="false">
-            <div class="unit-options" id="wishlist-unit-options" role="listbox" aria-label="Unit options" hidden>
-              <div class="unit-option" id="wishlist-unit-option-0" role="option" data-unit="piece">piece</div>
-              <div class="unit-option" id="wishlist-unit-option-1" role="option" data-unit="pieces">pieces</div>
-              <div class="unit-option" id="wishlist-unit-option-2" role="option" data-unit="box">box</div>
-              <div class="unit-option" id="wishlist-unit-option-3" role="option" data-unit="boxes">boxes</div>
-              <div class="unit-option" id="wishlist-unit-option-4" role="option" data-unit="bottle">bottle</div>
-              <div class="unit-option" id="wishlist-unit-option-5" role="option" data-unit="bottles">bottles</div>
-              <div class="unit-option" id="wishlist-unit-option-6" role="option" data-unit="ream">ream</div>
-              <div class="unit-option" id="wishlist-unit-option-7" role="option" data-unit="reams">reams</div>
-              <div class="unit-option" id="wishlist-unit-option-8" role="option" data-unit="pack">pack</div>
-              <div class="unit-option" id="wishlist-unit-option-9" role="option" data-unit="roll">roll</div>
-              <div class="unit-option" id="wishlist-unit-option-10" role="option" data-unit="lot">lot</div>
-            </div>
-          </div>
-          <input class="filter-input" id="wishlist-cost" type="number" min="0" step="0.01" placeholder="Estimated unit cost">
-          <button class="btn btn-primary" id="wishlist-save-button" type="button" onclick="createWishlistItem(this)">Add to CSE Master List</button>
-          <button class="btn btn-ghost" id="wishlist-cancel-button" type="button" onclick="resetWishlistItemForm()" hidden>Cancel Edit</button>
-        </div>
-      </div>
     </div>
   </section>
   {% endif %}
@@ -980,12 +964,47 @@ td.center{text-align:center}
     </div>
   </section>
 
+  {% if is_admin %}
+  <section class="panel" id="panel-cse-add-item">
+    <div class="page-header"><div><h1>Add Item to CSE Master List</h1></div></div>
+    <div class="card" id="admin-wishlist-form-card">
+      <div class="card-header"><div><span class="card-title" id="wishlist-form-title">Add Item to CSE Master List</span><div class="text-xs text-muted">Administrator-only catalog maintenance. Office users can request these items but cannot change the catalog.</div></div></div>
+      <div class="card-body">
+        <div class="filter-row">
+          <input class="filter-input" id="wishlist-description" maxlength="3000" placeholder="Item description">
+          <input class="filter-input" id="wishlist-category" maxlength="80" placeholder="Category">
+          <div class="unit-picker" id="wishlist-unit-picker">
+            <input class="filter-input" id="wishlist-unit" maxlength="60" placeholder="Unit" role="combobox" aria-autocomplete="list" aria-controls="wishlist-unit-options" aria-expanded="false">
+            <div class="unit-options" id="wishlist-unit-options" role="listbox" aria-label="Unit options" hidden>
+              <div class="unit-option" id="wishlist-unit-option-0" role="option" data-unit="piece">piece</div>
+              <div class="unit-option" id="wishlist-unit-option-1" role="option" data-unit="pieces">pieces</div>
+              <div class="unit-option" id="wishlist-unit-option-2" role="option" data-unit="box">box</div>
+              <div class="unit-option" id="wishlist-unit-option-3" role="option" data-unit="boxes">boxes</div>
+              <div class="unit-option" id="wishlist-unit-option-4" role="option" data-unit="bottle">bottle</div>
+              <div class="unit-option" id="wishlist-unit-option-5" role="option" data-unit="bottles">bottles</div>
+              <div class="unit-option" id="wishlist-unit-option-6" role="option" data-unit="ream">ream</div>
+              <div class="unit-option" id="wishlist-unit-option-7" role="option" data-unit="reams">reams</div>
+              <div class="unit-option" id="wishlist-unit-option-8" role="option" data-unit="pack">pack</div>
+              <div class="unit-option" id="wishlist-unit-option-9" role="option" data-unit="roll">roll</div>
+              <div class="unit-option" id="wishlist-unit-option-10" role="option" data-unit="lot">lot</div>
+            </div>
+          </div>
+          <input class="filter-input" id="wishlist-cost" type="number" min="0" step="0.01" placeholder="Estimated unit cost">
+          <button class="btn btn-primary" id="wishlist-save-button" type="button" onclick="createWishlistItem(this)">Add to CSE Master List</button>
+          <button class="btn btn-ghost" id="wishlist-cancel-button" type="button" onclick="resetWishlistItemForm()" hidden>Cancel Edit</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   <section class="panel" id="panel-ppmp-wishlist">
     <div class="page-header">
       <div>
         <h1>CSE Master List</h1>
         <p>Official Wishlist catalog for PPMP. Only the Administrator can edit or delete these entries.</p>
       </div>
+      {% if is_admin %}<div class="action-row"><button class="btn btn-primary" id="cse-add-item-button" type="button" onclick="openCSEMasterItemForm()">Add Item</button></div>{% endif %}
     </div>
 
     {% if not is_admin %}
@@ -2531,12 +2550,38 @@ function showToast(msg, title = 'Info', type = '') {
 // ─────────────────────────────────────────────
 // NAVIGATION
 // ─────────────────────────────────────────────
+function setCSEMasterMenuExpanded(expanded) {
+  const submenu = document.getElementById('cse-master-submenu');
+  const toggle = document.getElementById('cse-submenu-toggle');
+  if (!submenu || !toggle) return;
+  submenu.hidden = !expanded;
+  toggle.setAttribute('aria-expanded', String(expanded));
+}
+
+function toggleCSEMasterMenu(event) {
+  event.stopPropagation();
+  if (currentUser?.role !== 'ADMIN') return;
+  const submenu = document.getElementById('cse-master-submenu');
+  if (submenu) setCSEMasterMenuExpanded(submenu.hidden);
+}
+
+function openCSEMasterItemForm() {
+  if (currentUser?.role !== 'ADMIN') return;
+  resetWishlistItemForm();
+  showPanel('cse-add-item');
+  document.getElementById('wishlist-description')?.focus();
+}
+
 function showPanel(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
+  if (id === 'ppmp-wishlist' || id === 'cse-add-item') {
+    setCSEMasterMenuExpanded(true);
+    if (id === 'cse-add-item') document.getElementById('ppmp-master-nav')?.classList.add('active');
+  }
 
   if (id === 'consolidation') renderConsolidation();
   if (id === 'reports') loadOrderReports();
@@ -2699,7 +2744,7 @@ function editWishlistItem(itemId) {
   document.getElementById('wishlist-form-title').textContent = 'Edit CSE Master List Item';
   document.getElementById('wishlist-save-button').textContent = 'Save Changes';
   document.getElementById('wishlist-cancel-button').hidden = false;
-  showPanel('dashboard');
+  showPanel('cse-add-item');
   document.getElementById('admin-wishlist-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
