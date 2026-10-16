@@ -138,6 +138,11 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .cse-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .cse-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
 .cse-submenu .nav-item:hover,.cse-submenu .nav-item.active{background:var(--sky)}
+.admin-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.admin-submenu-toggle:hover,.admin-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.admin-submenu-toggle span{transition:transform .15s}
+.admin-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.admin-overview-submenu .nav-item{margin-left:32px}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
 .approval-badge{background:var(--gold);color:var(--navy-deep)}
@@ -690,7 +695,9 @@ td.center{text-align:center}
     {% if is_admin %}
     <div class="nav-item active" id="admin-dashboard-nav" data-panel="dashboard" onclick="showPanel('dashboard',this)">
       <span class="icon"></span> Admin Overview
+      <button class="admin-submenu-toggle" id="admin-submenu-toggle" type="button" aria-label="Toggle Admin Overview submenu" aria-expanded="false" aria-controls="admin-overview-submenu" onclick="toggleAdminOverviewMenu(event)"><span aria-hidden="true">&#9662;</span></button>
     </div>
+    <div class="admin-overview-submenu" id="admin-overview-submenu" hidden>
     {% endif %}
     <div class="nav-item" id="ppmp-dashboard-nav" data-panel="ppmp-dashboard" onclick="showPanel('ppmp-dashboard',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Dashboard
@@ -698,6 +705,9 @@ td.center{text-align:center}
     <div class="nav-item" id="app-dashboard-nav" data-panel="app-dashboard" onclick="showPanel('app-dashboard',this)" hidden>
       <span class="icon"></span> APP Dashboard
     </div>
+    {% if is_admin %}
+    </div>
+    {% endif %}
     <div class="nav-item" id="ppmp-items-nav" data-panel="ppmp-planning" onclick="showPanel('ppmp-planning',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Wishlist
       <span class="nav-badge" id="badge-total">0</span>
@@ -2550,6 +2560,21 @@ function showToast(msg, title = 'Info', type = '') {
 // ─────────────────────────────────────────────
 // NAVIGATION
 // ─────────────────────────────────────────────
+function setAdminOverviewMenuExpanded(expanded) {
+  const submenu = document.getElementById('admin-overview-submenu');
+  const toggle = document.getElementById('admin-submenu-toggle');
+  if (!submenu || !toggle) return;
+  submenu.hidden = !expanded;
+  toggle.setAttribute('aria-expanded', String(expanded));
+}
+
+function toggleAdminOverviewMenu(event) {
+  event.stopPropagation();
+  if (currentUser?.role !== 'ADMIN') return;
+  const submenu = document.getElementById('admin-overview-submenu');
+  if (submenu) setAdminOverviewMenuExpanded(submenu.hidden);
+}
+
 function setCSEMasterMenuExpanded(expanded) {
   const submenu = document.getElementById('cse-master-submenu');
   const toggle = document.getElementById('cse-submenu-toggle');
@@ -2578,6 +2603,10 @@ function showPanel(id, el) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
+  if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
+    setAdminOverviewMenuExpanded(true);
+    if (id !== 'dashboard') document.getElementById('admin-dashboard-nav')?.classList.add('active');
+  }
   if (id === 'ppmp-wishlist' || id === 'cse-add-item') {
     setCSEMasterMenuExpanded(true);
     if (id === 'cse-add-item') document.getElementById('ppmp-master-nav')?.classList.add('active');
