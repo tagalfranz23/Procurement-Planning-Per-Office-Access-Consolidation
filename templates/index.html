@@ -143,6 +143,13 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .admin-submenu-toggle span{transition:transform .15s}
 .admin-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .admin-overview-submenu .nav-item{margin-left:32px}
+.reports-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.reports-submenu-toggle:hover,.reports-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.reports-submenu-toggle span{transition:transform .15s}
+.reports-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.reports-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.reports-submenu .nav-item:hover,.reports-submenu .nav-item.active{background:var(--sky)}
+#ppmp-request-records-card{scroll-margin-top:calc(var(--header-h) + 16px)}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
 .approval-badge{background:var(--gold);color:var(--navy-deep)}
@@ -740,6 +747,10 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="reports-nav" data-panel="reports" onclick="showPanel('reports',this)" hidden>
       <span class="icon">📈</span> Reports
+      <button class="reports-submenu-toggle" id="reports-submenu-toggle" type="button" aria-label="Toggle Reports submenu" aria-expanded="false" aria-controls="reports-submenu" onclick="toggleReportsMenu(event)"><span aria-hidden="true">&#9662;</span></button>
+    </div>
+    <div class="reports-submenu" id="reports-submenu" hidden>
+      <button class="nav-item" id="reports-ppmp-request-nav" type="button" data-panel="reports" data-permission="ppmp.report" onclick="openPPMPRequestRecords(this)">PPMP Request Records</button>
     </div>
     <div class="nav-item" id="activity-log-nav" data-panel="activity-log" onclick="showPanel('activity-log',this)">
       Activity Log
@@ -1113,7 +1124,7 @@ td.center{text-align:center}
       </div>
     </div>
     <div class="chart-card mt-12"><div class="chart-title">Item Trend by Month</div><div class="line-chart" id="report-order-trend"></div></div>
-    <div class="card mt-12"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody id="report-records"><tr><td colspan="7">No submitted item records.</td></tr></tbody></table></div></div>
+    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody id="report-records"><tr><td colspan="7">No submitted item records.</td></tr></tbody></table></div></div>
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
       <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. 1</span><div class="ppmp-report-types"><label class="ppmp-report-type"><input type="checkbox">Indicative</label><label class="ppmp-report-type"><input type="checkbox" checked>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
@@ -2555,6 +2566,33 @@ function showToast(msg, title = 'Info', type = '') {
 // ─────────────────────────────────────────────
 // NAVIGATION
 // ─────────────────────────────────────────────
+function setReportsMenuExpanded(expanded) {
+  const submenu = document.getElementById('reports-submenu');
+  const toggle = document.getElementById('reports-submenu-toggle');
+  if (!submenu || !toggle) return;
+  const isExpanded = expanded && hasClientPermission('ppmp.report');
+  submenu.hidden = !isExpanded;
+  toggle.setAttribute('aria-expanded', String(isExpanded));
+}
+
+function toggleReportsMenu(event) {
+  event.stopPropagation();
+  if (!hasClientPermission('ppmp.report')) return;
+  const submenu = document.getElementById('reports-submenu');
+  if (submenu) setReportsMenuExpanded(submenu.hidden);
+}
+
+async function openPPMPRequestRecords(navEl) {
+  if (!currentUser || !hasClientPermission('ppmp.report')) return;
+  try {
+    await showPanel('reports', navEl);
+    if (!navEl?.classList.contains('active') || !document.getElementById('panel-reports')?.classList.contains('active')) return;
+    document.getElementById('ppmp-request-records-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    if (navEl?.classList.contains('active')) showToast(error.message, 'PPMP Request Records', 'error');
+  }
+}
+
 function setAdminOverviewMenuExpanded(expanded) {
   const submenu = document.getElementById('admin-overview-submenu');
   const toggle = document.getElementById('admin-submenu-toggle');
@@ -2598,6 +2636,10 @@ function showPanel(id, el) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
+  if (id === 'reports') {
+    setReportsMenuExpanded(true);
+    document.getElementById('reports-nav')?.classList.add('active');
+  }
   if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
     setAdminOverviewMenuExpanded(true);
     if (id !== 'dashboard') document.getElementById('admin-dashboard-nav')?.classList.add('active');
@@ -2608,7 +2650,7 @@ function showPanel(id, el) {
   }
 
   if (id === 'consolidation') renderConsolidation();
-  if (id === 'reports') loadOrderReports();
+  const reportsLoad = id === 'reports' ? loadOrderReports() : undefined;
   if (id === 'admin-approval') refreshAccountAdministration();
   if (id === 'dashboard') loadAdminOverview();
   if (id === 'ppmp-dashboard') loadPPMPDashboard();
@@ -2619,6 +2661,7 @@ function showPanel(id, el) {
   if (id === 'apps') loadApps();
   if (id === 'activity-log') loadActivityLog();
   if (window.matchMedia('(max-width: 900px)').matches) closeSidebar();
+  return reportsLoad;
 }
 
 async function legacyLoadPPMPRequests() {
