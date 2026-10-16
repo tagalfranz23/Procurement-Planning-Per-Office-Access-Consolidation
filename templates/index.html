@@ -689,21 +689,21 @@ td.center{text-align:center}
   <nav>
     {% if is_admin %}
     <div class="nav-item active" id="admin-dashboard-nav" data-panel="dashboard" onclick="showPanel('dashboard',this)">
-      <span class="icon">AD</span> Admin Overview
+      <span class="icon"></span> Admin Overview
     </div>
     {% endif %}
     <div class="nav-item" id="ppmp-dashboard-nav" data-panel="ppmp-dashboard" onclick="showPanel('ppmp-dashboard',this)" hidden>
-      {% if is_admin %}<span class="icon">PP</span>{% endif %} PPMP Dashboard
+      {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Dashboard
     </div>
     <div class="nav-item" id="app-dashboard-nav" data-panel="app-dashboard" onclick="showPanel('app-dashboard',this)" hidden>
-      <span class="icon">AP</span> APP Dashboard
+      <span class="icon"></span> APP Dashboard
     </div>
     <div class="nav-item" id="ppmp-items-nav" data-panel="ppmp-planning" onclick="showPanel('ppmp-planning',this)" hidden>
-      {% if is_admin %}<span class="icon">WL</span>{% endif %} PPMP Wishlist
+      {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Wishlist
       <span class="nav-badge" id="badge-total">0</span>
     </div>
     <div class="nav-item" id="ppmp-master-nav" data-panel="ppmp-wishlist" onclick="showPanel('ppmp-wishlist',this)" hidden>
-      {% if is_admin %}<span class="icon">WL</span>{% endif %} CSE Master List
+      {% if is_admin %}<span class="icon"></span>{% endif %} CSE Master List
       {% if is_admin %}<button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>{% endif %}
     </div>
     {% if is_admin %}
@@ -712,7 +712,7 @@ td.center{text-align:center}
     </div>
     {% endif %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
-      {% if is_admin %}<span class="icon">RQ</span>{% endif %} PPMP Requests
+      {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Requests
     </div>
     {% if not is_admin %}
     <div class="nav-item" id="consolidation-nav" data-panel="consolidation" onclick="showPanel('consolidation',this)" hidden>
@@ -726,7 +726,7 @@ td.center{text-align:center}
     </div>
     {% endif %}
     <div class="nav-item" id="app-nav" data-panel="apps" onclick="showPanel('apps',this)" hidden>
-      <span class="icon">APP</span> APP Plans
+      <span class="icon"></span> APP Plans
     </div>
     <div class="nav-item" id="reports-nav" data-panel="reports" onclick="showPanel('reports',this)" hidden>
       <span class="icon">📈</span> Reports
