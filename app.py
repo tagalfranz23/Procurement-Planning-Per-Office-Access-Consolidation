@@ -2750,6 +2750,56 @@ def ppmp_request_report_detail(order_id):
     return jsonify(ppmp_request_report_payload(order, user))
 
 
+def ppmp_request_report_item_changes(data):
+    """Validate report fields without changing an item or writing to the database."""
+    allowed_fields = {
+        'project_type',
+        'procurement_method', 'pre_procurement_conference',
+        'procurement_start', 'procurement_end', 'delivery_period',
+        'source_of_funds', 'remarks',
+    }
+    if not isinstance(data, dict) or not data or set(data) - allowed_fields:
+        raise ValueError('Only Columns 2, 4 through 9, and 12 can be updated in this report.')
+    changes = {}
+    if 'project_type' in data:
+        project_type = str(data.get('project_type') or '').strip()
+        if project_type and project_type not in PPMP_ORDER_TYPES:
+            raise ValueError('Select a valid Procurement Type.')
+        changes['project_type'] = project_type or None
+    if 'procurement_method' in data:
+        method = str(data.get('procurement_method') or '').strip()
+        if method and method not in PPMP_REPORT_PROCUREMENT_METHODS:
+            raise ValueError('Select a valid Recommended Mode of Procurement.')
+        changes['procurement_method'] = method or None
+    if 'pre_procurement_conference' in data:
+        value = data.get('pre_procurement_conference')
+        if value is not None and not isinstance(value, (str, bool, int, float)):
+            raise ValueError('Select a valid Pre-Procured conference value.')
+        changes['pre_procurement_conference'] = (
+            None if str(value or '').strip() == ''
+            else parse_controlled_boolean(value, 'Pre-Procured conference')
+        )
+    for field_name, label in (
+        ('procurement_start', 'Start of Procurement Activity'),
+        ('procurement_end', 'End of Procurement Activity'),
+        ('delivery_period', 'Expected Delivery Implementation Period'),
+    ):
+        if field_name in data:
+            value = str(data.get(field_name) or '').strip()
+            changes[field_name] = parse_month_value(value, label) if value else None
+    if 'source_of_funds' in data:
+        source_of_funds = str(data.get('source_of_funds') or '').strip()
+        if source_of_funds and source_of_funds not in PPMP_ORDER_FUND_SOURCES:
+            raise ValueError('Select a valid Source of Funds.')
+        changes['source_of_funds'] = source_of_funds or None
+    if 'remarks' in data:
+        remarks = str(data.get('remarks') or '').strip()
+        if len(remarks) > 5000:
+            raise ValueError('Remarks must not exceed 5,000 characters.')
+        changes['remarks'] = remarks or None
+    return changes
+
+
 @app.route('/api/reports/ppmp-orders/<int:order_id>/items/<int:item_id>', methods=['PUT'])
 @permission_required('ppmp.report')
 def update_ppmp_request_report_item(order_id, item_id):
@@ -2766,57 +2816,72 @@ def update_ppmp_request_report_item(order_id, item_id):
     item = PPMPOrderItem.query.filter_by(id=item_id, order_id=order.id).one_or_none()
     if item is None:
         return jsonify({'error': 'Requested item not found in this PPMP Request Record.'}), 404
-    data = request.get_json(silent=True) or {}
-    allowed_fields = {
-        'project_type',
-        'procurement_method', 'pre_procurement_conference',
-        'procurement_start', 'procurement_end', 'delivery_period',
-        'source_of_funds', 'remarks',
-    }
-    if not data or set(data) - allowed_fields:
-        return jsonify({'error': 'Only Columns 2, 4 through 9, and 12 can be updated in this report.'}), 400
+    data = request.get_json(silent=True)
     try:
-        if 'project_type' in data:
-            project_type = str(data.get('project_type') or '').strip()
-            if project_type and project_type not in PPMP_ORDER_TYPES:
-                raise ValueError('Select a valid Procurement Type.')
-            item.project_type = project_type or None
-        if 'procurement_method' in data:
-            method = str(data.get('procurement_method') or '').strip()
-            if method and method not in PPMP_REPORT_PROCUREMENT_METHODS:
-                raise ValueError('Select a valid Recommended Mode of Procurement.')
-            item.procurement_method = method or None
-        if 'pre_procurement_conference' in data:
-            value = data.get('pre_procurement_conference')
-            item.pre_procurement_conference = (
-                None if str(value or '').strip() == ''
-                else parse_controlled_boolean(value, 'Pre-Procured conference')
-            )
-        for field_name, label in (
-            ('procurement_start', 'Start of Procurement Activity'),
-            ('procurement_end', 'End of Procurement Activity'),
-            ('delivery_period', 'Expected Delivery Implementation Period'),
-        ):
-            if field_name in data:
-                value = str(data.get(field_name) or '').strip()
-                setattr(item, field_name, parse_month_value(value, label) if value else None)
-        if 'source_of_funds' in data:
-            source_of_funds = str(data.get('source_of_funds') or '').strip()
-            if source_of_funds and source_of_funds not in PPMP_ORDER_FUND_SOURCES:
-                raise ValueError('Select a valid Source of Funds.')
-            item.source_of_funds = source_of_funds or None
-        if 'remarks' in data:
-            remarks = str(data.get('remarks') or '').strip()
-            if len(remarks) > 5000:
-                raise ValueError('Remarks must not exceed 5,000 characters.')
-            item.remarks = remarks or None
+        changes = ppmp_request_report_item_changes(data)
     except ValueError as error_value:
         return jsonify({'error': str(error_value)}), 400
+    for field_name, value in changes.items():
+        setattr(item, field_name, value)
     audit('ppmp_order_item', item.id, 'REPORT_FIELDS_UPDATED', {
-        'order_id': order.id, 'fields': sorted(data),
+        'order_id': order.id, 'fields': sorted(changes),
     })
     db.session.commit()
     return jsonify(ppmp_request_report_item(item, order))
+
+
+@app.route('/api/reports/ppmp-orders/<int:order_id>/items', methods=['PUT'])
+@permission_required('ppmp.report')
+def update_ppmp_request_report_items(order_id):
+    user = current_session_user()
+    order, error = authorized_ppmp_request_report(user, order_id)
+    if error:
+        return error
+    if not (
+        is_ppmp_office_role(user.role)
+        and user.college_id == order.office_id
+        and order.requested_by == user.id
+    ):
+        return jsonify({'error': 'Only the requesting PPMP user can complete the editable PPMP report fields.'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'items'}:
+        return jsonify({'error': 'Provide the report items to save.'}), 400
+    rows = data['items']
+    if not isinstance(rows, list) or not rows:
+        return jsonify({'error': 'Provide at least one report item to save.'}), 400
+    validated_rows = []
+    item_ids = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {'id', 'fields'}:
+            return jsonify({'error': 'Each report item must contain an id and editable fields.'}), 400
+        item_id = row['id']
+        if type(item_id) is not int or item_id <= 0:
+            return jsonify({'error': 'Each report item must have a valid integer id.'}), 400
+        if item_id in item_ids:
+            return jsonify({'error': 'A report item can only be included once per save.'}), 400
+        try:
+            changes = ppmp_request_report_item_changes(row['fields'])
+        except ValueError as error_value:
+            return jsonify({'error': str(error_value)}), 400
+        item_ids.add(item_id)
+        validated_rows.append((item_id, changes))
+    items = {
+        item.id: item for item in PPMPOrderItem.query.filter(
+            PPMPOrderItem.order_id == order.id,
+            PPMPOrderItem.id.in_(item_ids),
+        ).all()
+    }
+    if set(items) != item_ids:
+        return jsonify({'error': 'Requested item not found in this PPMP Request Record.'}), 404
+    for item_id, changes in validated_rows:
+        item = items[item_id]
+        for field_name, value in changes.items():
+            setattr(item, field_name, value)
+        audit('ppmp_order_item', item.id, 'REPORT_FIELDS_UPDATED', {
+            'order_id': order.id, 'fields': sorted(changes),
+        })
+    db.session.commit()
+    return jsonify(ppmp_request_report_payload(order, user))
 
 
 def build_ppmp_order_report(orders):

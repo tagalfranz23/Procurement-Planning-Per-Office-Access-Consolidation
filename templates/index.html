@@ -528,6 +528,7 @@ td.center{text-align:center}
   #ppmp-request-report-detail .ppmp-report-type{font-size:11px}
 }
 .ppmp-request-report-controls{display:flex;align-items:center;gap:8px}
+.ppmp-report-edit-controls{display:flex;justify-content:flex-end;gap:8px;padding:0 16px 12px}
 .ppmp-report-export-dropdown{position:relative}
 .ppmp-report-export-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:120px;padding:4px;background:#fff;border:1px solid var(--gray-200);border-radius:6px;box-shadow:var(--shadow-lg)}
 .ppmp-report-export-menu[hidden]{display:none}
@@ -565,7 +566,7 @@ td.center{text-align:center}
   #ppmp-request-report-detail .ppmp-request-report-table select,#ppmp-request-report-detail .ppmp-request-report-table input{width:100%!important;min-width:0!important;padding:0!important;border:0!important;box-shadow:none!important;background:transparent!important;color:#111!important;font-size:6pt!important;appearance:none}
   #ppmp-request-report-detail .ppmp-request-report-table thead{display:table-header-group}
   #ppmp-request-report-detail .ppmp-request-report-table tr{break-inside:avoid;page-break-inside:avoid}
-  #ppmp-request-report-controls{display:none!important}
+  #ppmp-request-report-controls,#ppmp-report-edit-controls{display:none!important}
 }
 
 /* Cross-device layout adjustments for the existing dashboard and its controls. */
@@ -1203,6 +1204,10 @@ td.center{text-align:center}
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
       <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. 1</span><div class="ppmp-report-types"><label class="ppmp-report-type"><input type="checkbox">Indicative</label><label class="ppmp-report-type"><input type="checkbox" checked>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
+      <div class="ppmp-report-edit-controls" id="ppmp-report-edit-controls" aria-label="Report editing controls">
+        <button class="btn btn-primary" id="ppmp-report-edit-button" type="button" onclick="editPPMPRequestReport()" disabled>Edit</button>
+        <button class="btn btn-primary" id="ppmp-report-save-button" type="button" onclick="savePPMPRequestReport()" disabled>Save</button>
+      </div>
       <div class="ppmp-request-report-wrap"><table class="ppmp-request-report-table"><thead><tr><th>General Description and Objective of the Project to be Procured</th><th>Types of the Project to be procured (Whether Goods, Infrastructure, and Consulting Services)</th><th>Quantity and Size of the Project to be Procured</th><th>Recommended Mode of Procurement</th><th>Pre-Procured conference, if applicable (Yes/No)</th><th>Start of Procurement Activity</th><th>End of Procurement Activity</th><th>Expected Delivery Implementation Period</th><th>Source of Funds</th><th>Estimated Budget / Authorized Budgetary Allocation (Php)</th><th>ATTACHED SUPPORTING DOCUMENTS</th><th>REMARKS</th></tr></thead><tbody id="ppmp-request-report-items"></tbody></table></div>
       <div class="card-body">
         <div class="ppmp-request-report-controls" id="ppmp-request-report-controls" data-permission="ppmp.export">
@@ -1495,6 +1500,13 @@ let activeReportQuery = '';
 let selectedPPMPRequestReport = null;
 let ppmpRequestReportOpenRequest = 0;
 let ppmpReportSavePromise = Promise.resolve();
+let ppmpReportEditing = false;
+let ppmpReportSaving = false;
+let ppmpReportLoading = false;
+const PPMP_REPORT_EDITABLE_FIELDS = new Set([
+  'project_type', 'procurement_method', 'pre_procurement_conference',
+  'procurement_start', 'procurement_end', 'delivery_period', 'source_of_funds', 'remarks',
+]);
 
 // ─────────────────────────────────────────────
 // INIT
@@ -2059,6 +2071,7 @@ async function refreshAccountAdministration() {
 }
 
 async function toggleLogout() {
+  if (!prepareToLeavePPMPRequestReport()) return;
   const button = document.getElementById('logout-toggle');
   button.disabled = true;
   try {
@@ -2327,21 +2340,98 @@ function ppmpReportFundSourceOptions(report, selected) {
   return '<option value="">Select Source of Funds</option>' + report.fund_sources.map(source => `<option value="${escapeHtml(source)}"${source === selected ? ' selected' : ''}>${escapeHtml(source)}</option>`).join('');
 }
 
+function changedPPMPRequestReportItems() {
+  const report = selectedPPMPRequestReport;
+  if (!report || !ppmpReportEditing) return [];
+  const savedItems = new Map(report.items.map(item => [String(item.id), item]));
+  return [...document.querySelectorAll('#ppmp-request-report-items [data-report-item-id]')].flatMap(row => {
+    const saved = savedItems.get(row.dataset.reportItemId);
+    if (!saved) return [];
+    const fields = {};
+    row.querySelectorAll('[data-report-field]').forEach(input => {
+      const name = input.dataset.reportField;
+      if (PPMP_REPORT_EDITABLE_FIELDS.has(name) && input.value !== String(saved[name] ?? '')) {
+        fields[name] = input.value;
+      }
+    });
+    return Object.keys(fields).length ? [{ id: saved.id, fields }] : [];
+  });
+}
+
+function updatePPMPReportEditingControls() {
+  const editable = Boolean(selectedPPMPRequestReport?.editable);
+  document.getElementById('ppmp-report-edit-controls').hidden = !editable;
+  const locked = ppmpReportSaving || ppmpReportLoading;
+  document.querySelectorAll('#ppmp-request-report-items [data-report-field]').forEach(input => {
+    input.disabled = !editable || !ppmpReportEditing || locked;
+  });
+  document.querySelectorAll('#ppmp-request-report-controls button').forEach(button => {
+    button.disabled = locked;
+  });
+  const editButton = document.getElementById('ppmp-report-edit-button');
+  const saveButton = document.getElementById('ppmp-report-save-button');
+  editButton.disabled = !editable || ppmpReportEditing || locked;
+  editButton.title = editable ? 'Edit this report' : 'This report is read-only.';
+  saveButton.disabled = !editable || !ppmpReportEditing || locked;
+  saveButton.textContent = ppmpReportSaving ? 'Saving...' : 'Save';
+  saveButton.title = ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
+}
+
+function resetPPMPRequestReportEditor() {
+  selectedPPMPRequestReport = null;
+  ppmpReportEditing = false;
+  ppmpReportLoading = false;
+  ppmpReportSavePromise = Promise.resolve();
+  document.getElementById('ppmp-request-report-detail').hidden = true;
+  document.getElementById('ppmp-request-report-items').replaceChildren();
+  updatePPMPReportEditingControls();
+}
+
+function prepareToLeavePPMPRequestReport() {
+  if (ppmpReportSaving) {
+    showToast('Wait for the report to finish saving before leaving.', 'PPMP Report', 'warning');
+    return false;
+  }
+  if (changedPPMPRequestReportItems().length && !confirm('Discard the unsaved changes to this PPMP report?')) return false;
+  ppmpRequestReportOpenRequest += 1;
+  resetPPMPRequestReportEditor();
+  return true;
+}
+
+window.addEventListener('beforeunload', event => {
+  if (!ppmpReportSaving && !changedPPMPRequestReportItems().length) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
+function renderPPMPRequestReport(report) {
+  selectedPPMPRequestReport = report;
+  ppmpReportEditing = false;
+  document.getElementById('ppmp-report-fiscal-year').textContent = report.fiscal_year;
+  document.getElementById('ppmp-report-office').textContent = report.end_user_or_implementing_unit;
+  document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td>${escapeHtml(item.general_description)}</td><td><select class="form-control" data-report-field="project_type" data-report-required disabled>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td>${escapeHtml(item.quantity_and_size)}</td><td><select class="form-control" data-report-field="procurement_method" data-report-required disabled>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required disabled><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td><input class="form-control" data-report-field="procurement_start" data-report-required type="month" value="${escapeHtml(item.procurement_start)}" disabled></td><td><input class="form-control" data-report-field="procurement_end" data-report-required type="month" value="${escapeHtml(item.procurement_end)}" disabled></td><td><input class="form-control" data-report-field="delivery_period" data-report-required type="month" value="${escapeHtml(item.delivery_period)}" disabled></td><td><select class="form-control" data-report-field="source_of_funds" data-report-required disabled>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount">₱ ${fmt(item.estimated_budget)}</td><td>${escapeHtml(item.supporting_documents || '')}</td><td><input class="form-control" data-report-field="remarks" maxlength="5000" value="${escapeHtml(item.remarks || '')}" disabled></td></tr>`).join('');
+  document.getElementById('ppmp-request-report-detail').hidden = false;
+  updatePPMPReportEditingControls();
+}
+
 async function openPPMPRequestReport(orderId, inline = false) {
   if (!currentUser || !hasClientPermission('ppmp.report')) return;
-  const requestId = ++ppmpRequestReportOpenRequest;
   const sourcePanel = inline ? document.getElementById('panel-ppmp-request-records') : document.querySelector('.panel.active');
   if (inline && !sourcePanel?.classList.contains('active')) return;
+  const detail = document.getElementById('ppmp-request-report-detail');
+  if (selectedPPMPRequestReport?.id === orderId && (ppmpReportEditing || ppmpReportSaving) &&
+      !detail.hidden && document.getElementById('panel-ppmp-request-document').classList.contains('active')) {
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (!prepareToLeavePPMPRequestReport()) return;
+  const requestId = ++ppmpRequestReportOpenRequest;
+  ppmpReportLoading = true;
+  updatePPMPReportEditingControls();
   try {
     const report = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
     if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return;
-    selectedPPMPRequestReport = report;
-    document.getElementById('ppmp-report-fiscal-year').textContent = report.fiscal_year;
-    document.getElementById('ppmp-report-office').textContent = report.end_user_or_implementing_unit;
-    const disabled = report.editable ? '' : ' disabled';
-    document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td>${escapeHtml(item.general_description)}</td><td><select class="form-control" data-report-field="project_type" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td>${escapeHtml(item.quantity_and_size)}</td><td><select class="form-control" data-report-field="procurement_method" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td><input class="form-control" data-report-field="procurement_start" data-report-required type="month" value="${escapeHtml(item.procurement_start)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><input class="form-control" data-report-field="procurement_end" data-report-required type="month" value="${escapeHtml(item.procurement_end)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><input class="form-control" data-report-field="delivery_period" data-report-required type="month" value="${escapeHtml(item.delivery_period)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><select class="form-control" data-report-field="source_of_funds" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount">₱ ${fmt(item.estimated_budget)}</td><td>${escapeHtml(item.supporting_documents || '')}</td><td><input class="form-control" data-report-field="remarks" maxlength="5000" value="${escapeHtml(item.remarks || '')}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td></tr>`).join('');
-    const detail = document.getElementById('ppmp-request-report-detail');
-    detail.hidden = false;
+    renderPPMPRequestReport(report);
     if (inline) {
       document.getElementById('panel-ppmp-request-document').classList.add('active');
     } else {
@@ -2352,31 +2442,63 @@ async function openPPMPRequestReport(orderId, inline = false) {
     if (requestId === ppmpRequestReportOpenRequest && sourcePanel?.classList.contains('active')) {
       showToast(error.message, 'PPMP Request Record', 'error');
     }
+  } finally {
+    if (requestId === ppmpRequestReportOpenRequest) {
+      ppmpReportLoading = false;
+      updatePPMPReportEditingControls();
+    }
   }
 }
 
-function savePPMPRequestReportItem(itemId) {
+function editPPMPRequestReport() {
+  if (!selectedPPMPRequestReport?.editable || ppmpReportSaving || ppmpReportLoading) return;
+  ppmpReportEditing = true;
+  updatePPMPReportEditingControls();
+}
+
+function savePPMPRequestReport() {
+  if (ppmpReportSaving) return ppmpReportSavePromise;
   const report = selectedPPMPRequestReport;
-  if (!report?.editable) return Promise.resolve();
-  const row = document.querySelector(`[data-report-item-id="${itemId}"]`);
-  if (!row) return Promise.resolve();
-  const payload = {};
-  row.querySelectorAll('[data-report-field]').forEach(field => {
-    payload[field.dataset.reportField] = field.value;
-  });
-  ppmpReportSavePromise = ppmpReportSavePromise.catch(() => {}).then(async () => {
+  if (!report?.editable || !ppmpReportEditing || ppmpReportLoading) return Promise.resolve(false);
+  const items = changedPPMPRequestReportItems();
+  if (!items.length) {
+    ppmpReportEditing = false;
+    updatePPMPReportEditingControls();
+    showToast('There are no changes to save.', 'PPMP Report', 'info');
+    return Promise.resolve(false);
+  }
+  ppmpReportSaving = true;
+  updatePPMPReportEditingControls();
+  ppmpReportSavePromise = (async () => {
     try {
-      const item = await apiFetch(`${API}/reports/ppmp-orders/${report.id}/items/${itemId}`, {
-        method: 'PUT', body: JSON.stringify(payload), showLoading: false,
+      const savedReport = await apiFetch(`${API}/reports/ppmp-orders/${report.id}/items`, {
+        method: 'PUT', body: JSON.stringify({ items }), loadingMessage: 'Saving PPMP report changes...',
       });
-      const index = report.items.findIndex(current => current.id === itemId);
-      if (index >= 0) report.items[index] = item;
+      if (selectedPPMPRequestReport !== report) return false;
+      renderPPMPRequestReport(savedReport);
+      showToast('The report changes were saved.', 'PPMP Report', 'success');
+      return true;
     } catch (error) {
       showToast(error.message, 'PPMP Report', 'error');
-      throw error;
+      return false;
+    } finally {
+      ppmpReportSaving = false;
+      updatePPMPReportEditingControls();
     }
-  });
+  })();
   return ppmpReportSavePromise;
+}
+
+function canUseSavedPPMPRequestReport() {
+  if (ppmpReportSaving) {
+    showToast('Wait for Save to finish before exporting or printing the report.', 'PPMP Report', 'warning');
+    return false;
+  }
+  if (changedPPMPRequestReportItems().length) {
+    showToast('Save your report changes before exporting or printing.', 'PPMP Report', 'warning');
+    return false;
+  }
+  return true;
 }
 
 function togglePPMPReportExportMenu(event) {
@@ -2397,31 +2519,36 @@ function closePPMPReportExportMenu() {
 
 async function exportPPMPRequestRecord(format) {
   closePPMPReportExportMenu();
-  if (!format || !selectedPPMPRequestReport) return;
+  const report = selectedPPMPRequestReport;
+  if (!format || !report || !canUseSavedPPMPRequestReport()) return;
   try {
     await ppmpReportSavePromise;
   } catch (_) {
     return;
   }
+  if (selectedPPMPRequestReport !== report || !canUseSavedPPMPRequestReport()) return;
   const incomplete = [...document.querySelectorAll('#ppmp-request-report-items [data-report-required]')]
     .some(field => !field.value);
   if (incomplete) {
     return showToast('Complete Columns 2 and 4 through 9 for every requested item before exporting.', 'PPMP Report', 'warning');
   }
-  window.location.href = `${API}/reports/ppmp-orders/${selectedPPMPRequestReport.id}/export/${format}`;
+  window.location.href = `${API}/reports/ppmp-orders/${report.id}/export/${format}`;
 }
 
 async function printPPMPRequestReport() {
   closePPMPReportExportMenu();
   const detail = document.getElementById('ppmp-request-report-detail');
-  if (!selectedPPMPRequestReport || !detail || detail.hidden) {
+  const report = selectedPPMPRequestReport;
+  if (!report || !detail || detail.hidden) {
     return showToast('Open a PPMP request report before using Print Preview.', 'PPMP Report', 'warning');
   }
+  if (!canUseSavedPPMPRequestReport()) return;
   try {
     await ppmpReportSavePromise;
   } catch (_) {
     return;
   }
+  if (selectedPPMPRequestReport !== report || !canUseSavedPPMPRequestReport()) return;
   window.print();
 }
 
@@ -2871,6 +2998,7 @@ function openCSEMasterItemForm() {
 function showPanel(id, el, reportQuery = null) {
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
   if ((id === 'cse-user-add-item' || id === 'cse-selected-items') && (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.view'))) return;
+  if (id !== 'ppmp-request-document' && !prepareToLeavePPMPRequestReport()) return false;
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${id}`)?.classList.add('active');
