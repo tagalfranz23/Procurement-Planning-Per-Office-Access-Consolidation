@@ -1150,7 +1150,7 @@ td.center{text-align:center}
 
   <!-- ══ REPORTS ════════════════════════════════════ -->
   <section class="panel" id="panel-ppmp-request-records">
-    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="report-records"><tr><td colspan="8">No submitted item records.</td></tr></tbody></table></div></div>
+    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Quarter</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="report-records"><tr><td colspan="9">No submitted item records.</td></tr></tbody></table></div></div>
   </section>
 
   <section class="panel" id="panel-reports">
@@ -2312,7 +2312,7 @@ async function generateAuthorizedReport(showLoading = false, query = null) {
   renderCountBarChart('report-office-bars', data.by_office);
   renderCountBarChart('report-item-bars', data.item_frequency);
   renderOrderTrend(data.monthly_trend);
-  document.getElementById('report-records').innerHTML = data.records.length ? data.records.map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="event.stopPropagation();openPPMPRequestReport(${order.id}, true)" onkeydown="event.stopPropagation()">View</button></td></tr>`).join('') : '<tr><td colspan="8">No submitted item records.</td></tr>';
+  document.getElementById('report-records').innerHTML = data.records.length ? data.records.map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.quarter || 'Not specified')}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="event.stopPropagation();openPPMPRequestReport(${order.id}, true)" onkeydown="event.stopPropagation()">View</button></td></tr>`).join('') : '<tr><td colspan="9">No submitted item records.</td></tr>';
 }
 
 function ppmpReportMethodOptions(report, selected) {
