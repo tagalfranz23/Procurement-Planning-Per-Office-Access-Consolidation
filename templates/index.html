@@ -1150,7 +1150,7 @@ td.center{text-align:center}
 
   <!-- ══ REPORTS ════════════════════════════════════ -->
   <section class="panel" id="panel-ppmp-request-records">
-    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th></tr></thead><tbody id="report-records"><tr><td colspan="7">No submitted item records.</td></tr></tbody></table></div></div>
+    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="report-records"><tr><td colspan="8">No submitted item records.</td></tr></tbody></table></div></div>
   </section>
 
   <section class="panel" id="panel-reports">
@@ -2312,7 +2312,7 @@ async function generateAuthorizedReport(showLoading = false, query = null) {
   renderCountBarChart('report-office-bars', data.by_office);
   renderCountBarChart('report-item-bars', data.item_frequency);
   renderOrderTrend(data.monthly_trend);
-  document.getElementById('report-records').innerHTML = data.records.length ? data.records.map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td></tr>`).join('') : '<tr><td colspan="7">No submitted item records.</td></tr>';
+  document.getElementById('report-records').innerHTML = data.records.length ? data.records.map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="event.stopPropagation();openPPMPRequestReport(${order.id}, true)" onkeydown="event.stopPropagation()">View</button></td></tr>`).join('') : '<tr><td colspan="8">No submitted item records.</td></tr>';
 }
 
 function ppmpReportMethodOptions(report, selected) {
@@ -2327,10 +2327,11 @@ function ppmpReportFundSourceOptions(report, selected) {
   return '<option value="">Select Source of Funds</option>' + report.fund_sources.map(source => `<option value="${escapeHtml(source)}"${source === selected ? ' selected' : ''}>${escapeHtml(source)}</option>`).join('');
 }
 
-async function openPPMPRequestReport(orderId) {
+async function openPPMPRequestReport(orderId, inline = false) {
   if (!currentUser || !hasClientPermission('ppmp.report')) return;
   const requestId = ++ppmpRequestReportOpenRequest;
-  const sourcePanel = document.querySelector('.panel.active');
+  const sourcePanel = inline ? document.getElementById('panel-ppmp-request-records') : document.querySelector('.panel.active');
+  if (inline && !sourcePanel?.classList.contains('active')) return;
   try {
     const report = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
     if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return;
@@ -2341,7 +2342,11 @@ async function openPPMPRequestReport(orderId) {
     document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td>${escapeHtml(item.general_description)}</td><td><select class="form-control" data-report-field="project_type" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td>${escapeHtml(item.quantity_and_size)}</td><td><select class="form-control" data-report-field="procurement_method" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td><input class="form-control" data-report-field="procurement_start" data-report-required type="month" value="${escapeHtml(item.procurement_start)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><input class="form-control" data-report-field="procurement_end" data-report-required type="month" value="${escapeHtml(item.procurement_end)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><input class="form-control" data-report-field="delivery_period" data-report-required type="month" value="${escapeHtml(item.delivery_period)}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td><td><select class="form-control" data-report-field="source_of_funds" data-report-required onchange="savePPMPRequestReportItem(${item.id})"${disabled}>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount">₱ ${fmt(item.estimated_budget)}</td><td>${escapeHtml(item.supporting_documents || '')}</td><td><input class="form-control" data-report-field="remarks" maxlength="5000" value="${escapeHtml(item.remarks || '')}" onchange="savePPMPRequestReportItem(${item.id})"${disabled}></td></tr>`).join('');
     const detail = document.getElementById('ppmp-request-report-detail');
     detail.hidden = false;
-    showPanel('ppmp-request-document', document.getElementById('reports-ppmp-request-nav'));
+    if (inline) {
+      document.getElementById('panel-ppmp-request-document').classList.add('active');
+    } else {
+      showPanel('ppmp-request-document', document.getElementById('reports-ppmp-request-nav'));
+    }
     detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     if (requestId === ppmpRequestReportOpenRequest && sourcePanel?.classList.contains('active')) {

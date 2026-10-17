@@ -2668,13 +2668,13 @@ def scoped_ppmp_report_orders(user):
     return orders, report, None
 
 
-def authorized_ppmp_request_report(user, order_id):
+def authorized_ppmp_request_report(user, order_id, *, require_pending=True):
     order = db.session.get(PPMPOrder, order_id)
     if order is None:
         return None, (jsonify({'error': 'PPMP Request Record not found.'}), 404)
     if is_ppmp_office_role(user.role) and order.office_id != user.college_id:
         return None, (jsonify({'error': 'You cannot access another office PPMP Request Record.'}), 403)
-    if order.status not in PPMP_REPORT_PENDING_STATUSES:
+    if require_pending and order.status not in PPMP_REPORT_PENDING_STATUSES:
         return None, (jsonify({'error': 'Only a Pending PPMP Request Record can be opened as this report.'}), 409)
     return order, None
 
@@ -2744,7 +2744,7 @@ def ppmp_request_report_is_complete(order):
 @permission_required('ppmp.report')
 def ppmp_request_report_detail(order_id):
     user = current_session_user()
-    order, error = authorized_ppmp_request_report(user, order_id)
+    order, error = authorized_ppmp_request_report(user, order_id, require_pending=False)
     if error:
         return error
     return jsonify(ppmp_request_report_payload(order, user))
