@@ -143,12 +143,12 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .admin-submenu-toggle span{transition:transform .15s}
 .admin-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .admin-overview-submenu .nav-item{margin-left:32px}
-.reports-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
-.reports-submenu-toggle:hover,.reports-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
-.reports-submenu-toggle span{transition:transform .15s}
-.reports-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
-.reports-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
-.reports-submenu .nav-item:hover,.reports-submenu .nav-item.active{background:var(--sky)}
+.ppmp-requests-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.ppmp-requests-submenu-toggle:hover,.ppmp-requests-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.ppmp-requests-submenu-toggle span{transition:transform .15s}
+.ppmp-requests-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.ppmp-requests-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.ppmp-requests-submenu .nav-item:hover,.ppmp-requests-submenu .nav-item.active{background:var(--sky)}
 #ppmp-request-records-card,#ppmp-request-report-detail{scroll-margin-top:calc(var(--header-h) + 16px)}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
@@ -733,6 +733,10 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Requests
+      <button class="ppmp-requests-submenu-toggle" id="ppmp-requests-submenu-toggle" type="button" data-permission="ppmp.report" aria-label="Toggle PPMP Requests submenu" aria-expanded="false" aria-controls="ppmp-requests-submenu" onclick="togglePPMPRequestsMenu(event)"><span aria-hidden="true">&#9662;</span></button>
+    </div>
+    <div class="ppmp-requests-submenu" id="ppmp-requests-submenu" hidden>
+      <button class="nav-item" id="reports-ppmp-request-nav" type="button" data-panel="ppmp-request-records" data-permission="ppmp.report" onclick="openPPMPRequestRecords(this)">PPMP Request Records</button>
     </div>
     {% if not is_admin %}
     <div class="nav-item" id="consolidation-nav" data-panel="consolidation" onclick="showPanel('consolidation',this)" hidden>
@@ -749,10 +753,6 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="reports-nav" data-panel="reports" onclick="showPanel('reports',this)" hidden>
       <span class="icon">📈</span> Reports
-      <button class="reports-submenu-toggle" id="reports-submenu-toggle" type="button" aria-label="Toggle Reports submenu" aria-expanded="false" aria-controls="reports-submenu" onclick="toggleReportsMenu(event)"><span aria-hidden="true">&#9662;</span></button>
-    </div>
-    <div class="reports-submenu" id="reports-submenu" hidden>
-      <button class="nav-item" id="reports-ppmp-request-nav" type="button" data-panel="ppmp-request-records" data-permission="ppmp.report" onclick="openPPMPRequestRecords(this)">PPMP Request Records</button>
     </div>
     <div class="nav-item" id="activity-log-nav" data-panel="activity-log" onclick="showPanel('activity-log',this)">
       Activity Log
@@ -2799,20 +2799,20 @@ function showToast(msg, title = 'Info', type = '') {
 // ─────────────────────────────────────────────
 // NAVIGATION
 // ─────────────────────────────────────────────
-function setReportsMenuExpanded(expanded) {
-  const submenu = document.getElementById('reports-submenu');
-  const toggle = document.getElementById('reports-submenu-toggle');
+function setPPMPRequestsMenuExpanded(expanded) {
+  const submenu = document.getElementById('ppmp-requests-submenu');
+  const toggle = document.getElementById('ppmp-requests-submenu-toggle');
   if (!submenu || !toggle) return;
   const isExpanded = expanded && hasClientPermission('ppmp.report');
   submenu.hidden = !isExpanded;
   toggle.setAttribute('aria-expanded', String(isExpanded));
 }
 
-function toggleReportsMenu(event) {
+function togglePPMPRequestsMenu(event) {
   event.stopPropagation();
   if (!hasClientPermission('ppmp.report')) return;
-  const submenu = document.getElementById('reports-submenu');
-  if (submenu) setReportsMenuExpanded(submenu.hidden);
+  const submenu = document.getElementById('ppmp-requests-submenu');
+  if (submenu) setPPMPRequestsMenuExpanded(submenu.hidden);
 }
 
 async function openPPMPRequestRecords(navEl = document.getElementById('reports-ppmp-request-nav'), query = activeReportQuery || null) {
@@ -2871,9 +2871,9 @@ function showPanel(id, el, reportQuery = null) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
-  if (id === 'reports' || id === 'ppmp-request-records' || id === 'ppmp-request-document') {
-    setReportsMenuExpanded(true);
-    document.getElementById('reports-nav')?.classList.add('active');
+  if (id === 'ppmp-requests' || id === 'ppmp-request-records' || id === 'ppmp-request-document') {
+    setPPMPRequestsMenuExpanded(true);
+    document.getElementById('ppmp-request-nav')?.classList.add('active');
   }
   if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
     setAdminOverviewMenuExpanded(true);
