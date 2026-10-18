@@ -1740,12 +1740,17 @@ def ppmp_records():
     if office is None or not office.is_active:
         return jsonify({'error': 'Your account must be linked to an active office.'}), 409
     data = request.get_json(silent=True) or {}
+    raw_fiscal_year = data.get('fiscal_year')
     try:
-        fiscal_year = int(data.get('fiscal_year'))
-    except (TypeError, ValueError):
+        fiscal_year = int(raw_fiscal_year)
+    except (TypeError, ValueError, OverflowError):
         return jsonify({'error': 'A valid fiscal year is required.'}), 400
-    if fiscal_year < 2000 or fiscal_year > 2100:
-        return jsonify({'error': 'Fiscal year must be between 2000 and 2100.'}), 400
+    if isinstance(raw_fiscal_year, bool) or (
+        isinstance(raw_fiscal_year, float) and raw_fiscal_year != fiscal_year
+    ):
+        return jsonify({'error': 'A valid fiscal year is required.'}), 400
+    if fiscal_year < 2026 or fiscal_year > 2100:
+        return jsonify({'error': 'Fiscal year must be between 2026 and 2100.'}), 400
     submission_request = None
     raw_submission_request_id = data.get('submission_request_id')
     if raw_submission_request_id is not None and raw_submission_request_id != '':

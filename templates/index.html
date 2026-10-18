@@ -974,8 +974,7 @@ td.center{text-align:center}
     <div class="card" data-permission="ppmp.record.create" id="ppmp-record-create-card">
       <div class="card-header"><span class="card-title">Create PPMP Draft</span></div>
       <div class="card-body"><div class="filter-row">
-        <input class="filter-input" id="ppmp-record-year" type="number" min="2000" max="2100" placeholder="Fiscal year">
-        <select class="filter-select" id="ppmp-record-request"><option value="">EO request (optional)</option></select>
+        <input class="filter-input" id="ppmp-record-year" type="number" min="2026" max="2100" step="1" placeholder="Fiscal year" aria-label="Fiscal year" required>
         <button class="btn btn-primary" type="button" onclick="createPPMPRecord(this)">Create Draft</button>
       </div></div>
     </div>
@@ -1792,7 +1791,7 @@ function populateWorkflowSelects() {
   populate('ppmp-item-project-type', systemMetadata.project_types || [], 'Select project type');
   populate('order-quarter', systemMetadata.quarters || [], 'Select quarter');
   if (document.getElementById('order-year')) document.getElementById('order-year').value = year;
-  if (document.getElementById('ppmp-record-year')) document.getElementById('ppmp-record-year').value = year;
+  if (document.getElementById('ppmp-record-year')) document.getElementById('ppmp-record-year').value = Math.max(2026, year);
   if (document.getElementById('submission-request-year')) document.getElementById('submission-request-year').value = year;
 }
 
@@ -3445,13 +3444,6 @@ async function loadPPMPPlanning() {
   wishlistOrders = orders;
   document.getElementById('badge-total').textContent = records.reduce((total, record) => total + record.item_count, 0);
 
-  const requestSelect = document.getElementById('ppmp-record-request');
-  if (requestSelect) {
-    const linkedIds = new Set(records.map(record => record.submission_request_id).filter(Boolean));
-    const available = requests.filter(row => row.college_id === currentUser.college_id && !linkedIds.has(row.id));
-    requestSelect.innerHTML = '<option value="">EO request (optional)</option>' + available.map(row => `<option value="${row.id}">FY ${row.fiscal_year} · ${escapeHtml(row.status)}</option>`).join('');
-  }
-
   const body = document.getElementById('ppmp-record-list');
   body.innerHTML = records.length ? records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" onclick="selectPPMPRecord(${record.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No PPMP documents. An authorized office user can create a Draft.</td></tr>';
   if (selectedPPMPRecordId && !records.some(record => record.id === selectedPPMPRecordId)) selectedPPMPRecordId = null;
@@ -3532,12 +3524,12 @@ function renderPPMPRecordWorkspace() {
 }
 
 async function createPPMPRecord(button) {
+  const fiscalYearInput = document.getElementById('ppmp-record-year');
+  if (!fiscalYearInput.reportValidity()) return;
   button.disabled = true;
-  const requestValue = document.getElementById('ppmp-record-request').value;
   try {
     const record = await apiFetch(`${API}/ppmp-records`, { method: 'POST', body: JSON.stringify({
-      fiscal_year: +document.getElementById('ppmp-record-year').value,
-      submission_request_id: requestValue ? +requestValue : null,
+      fiscal_year: fiscalYearInput.valueAsNumber,
     }), loadingMessage: 'Creating PPMP Draft...' });
     selectedPPMPRecordId = record.id;
     await Promise.all([loadPPMPPlanning(), loadPPMPRequests()]);
