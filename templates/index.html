@@ -985,11 +985,6 @@ td.center{text-align:center}
     </div>
 
     <div id="ppmp-record-workspace" hidden>
-      <div class="card">
-        <div class="card-header"><div><span class="card-title" id="selected-record-label">Selected PPMP</span><div class="text-xs text-muted" id="selected-record-meta"></div></div><div class="management-actions" id="ppmp-record-actions"></div></div>
-        <div class="card-body" id="ppmp-record-note" hidden></div>
-      </div>
-
       <div class="card" id="ppmp-item-form-card" hidden>
         <div class="card-header"><span class="card-title" id="ppmp-item-form-title">Edit PPMP Planning Row</span></div>
         <div class="card-body">
@@ -1015,7 +1010,8 @@ td.center{text-align:center}
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="card-title">12-Column PPMP Wishlist</span><span class="text-xs text-muted">Scroll horizontally to review every required field.</span></div>
+        <div class="card-header"><div><span class="card-title">12-Column PPMP Wishlist</span><div class="text-xs text-muted">Scroll horizontally to review every required field.</div></div><div class="management-actions" id="ppmp-record-actions"></div></div>
+        <div class="card-body" id="ppmp-record-note" hidden></div>
         <div class="table-wrap ppmp-table-wrap"><table class="ppmp-wide-table"><thead><tr><th class="selection-column">Select</th><th>1. General Description / Objective</th><th>2. Project Type</th><th>3. Quantity / Size</th><th>4. Procurement Method</th><th>5. Pre-procurement Conference</th><th>6. Start</th><th>7. End</th><th>8. Delivery / Implementation</th><th>9. Source of Funds</th><th>10. Estimated Budget</th><th>11. Supporting Documents</th><th>12. Remarks</th><th>Actions</th></tr></thead><tbody id="ppmp-record-item-list"><tr><td colspan="14">Select a PPMP document.</td></tr></tbody></table></div>
       </div>
 
@@ -3552,8 +3548,6 @@ function renderPPMPRecordWorkspace() {
   const canRequest = currentPermissions.includes('ppmp.order.create') &&
     record.office_id === currentUser.college_id && record.status === 'Approved';
   const orderedIds = new Set(wishlistOrders.flatMap(order => order.items.map(item => item.wishlist_item_id)).filter(Boolean));
-  document.getElementById('selected-record-label').textContent = record.reference_number;
-  document.getElementById('selected-record-meta').textContent = `${record.office_code || record.office_name} · Fiscal Year ${record.fiscal_year} · ${record.status} · ${record.item_count} item(s) · ₱ ${fmt(record.total_budget)}`;
   const note = document.getElementById('ppmp-record-note');
   note.hidden = !record.decision_note;
   note.innerHTML = record.decision_note ? `<div class="review-note"><strong>Latest review note:</strong> ${escapeHtml(record.decision_note)}</div>` : '';
