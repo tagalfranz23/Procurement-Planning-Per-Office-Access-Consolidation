@@ -1552,6 +1552,44 @@ def can_edit_ppmp_record(user, record):
     )
 
 
+def can_delete_ppmp_record(user, record):
+    """Permit deletion only of the preparer's independent, unused draft document."""
+    if (user is None or not user.is_active or user.account_status != 'ACTIVE'
+            or not has_permission(user, 'ppmp.record.create')
+            or not has_permission(user, 'ppmp.record.edit')
+            or not can_edit_ppmp_record(user, record)
+            or record.status != 'Draft' or record.submitted_at is not None
+            or record.submission_request_id is not None
+            or record.reviewed_by is not None or record.reviewed_at is not None
+            or record.approved_by is not None or record.approved_at is not None
+            or record.decision_note):
+        return False
+    if PPMPRecordItem.query.filter(
+        PPMPRecordItem.ppmp_record_id == record.id,
+        or_(PPMPRecordItem.ppmp_item_id.isnot(None), PPMPRecordItem.legacy_ppmp_item_id.isnot(None)),
+    ).first():
+        return False
+    if PPMPOrderItem.query.join(
+        PPMPRecordItem, PPMPOrderItem.wishlist_item_id == PPMPRecordItem.id,
+    ).filter(PPMPRecordItem.ppmp_record_id == record.id).first():
+        return False
+    if PPMPComment.query.outerjoin(
+        PPMPRecordItem, PPMPComment.ppmp_record_item_id == PPMPRecordItem.id,
+    ).filter(or_(
+        PPMPComment.ppmp_record_id == record.id,
+        PPMPRecordItem.ppmp_record_id == record.id,
+    )).first():
+        return False
+    if WorkflowAuditLog.query.filter(
+        WorkflowAuditLog.entity_type == 'ppmp_record',
+        WorkflowAuditLog.entity_id == record.id,
+        WorkflowAuditLog.created_at >= record.created_at,
+        WorkflowAuditLog.action.notin_(('PPMP_DRAFT_CREATED', 'PPMP_DRAFT_SAVED')),
+    ).first():
+        return False
+    return True
+
+
 def parse_month_value(value, field_label):
     value = str(value or '').strip()
     for pattern in ('%Y-%m', '%Y-%m-%d'):
@@ -1708,6 +1746,7 @@ def materialize_approved_ppmp_record(record, approver):
 
 def ppmp_record_response(record):
     result = record.to_dict()
+    result['can_delete'] = can_delete_ppmp_record(current_session_user(), record)
     result['comments'] = [
         comment.to_dict() for comment in PPMPComment.query.filter_by(ppmp_record_id=record.id)
         .order_by(PPMPComment.created_at.asc()).all()
@@ -1805,6 +1844,55 @@ def ppmp_record_detail(record_id):
     audit('ppmp_record', record.id, 'PPMP_DRAFT_SAVED', {'status': record.status})
     db.session.commit()
     return jsonify(ppmp_record_response(record))
+
+
+@app.route('/api/ppmp-records/<int:record_id>', methods=['DELETE'])
+@permission_required('ppmp.record.edit')
+def delete_ppmp_record(record_id):
+    record = PPMPRecord.query.filter_by(id=record_id).with_for_update().one_or_none()
+    if record is None:
+        return jsonify({'error': 'PPMP record not found.'}), 404
+    user = current_session_user()
+    if not (
+        is_ppmp_office_role(user.role)
+        and user.college_id == record.office_id
+        and record.prepared_by == user.id
+        and has_permission(user, 'ppmp.record.create')
+    ):
+        return jsonify({'error': 'Only the preparing office PPMP user can delete this document.'}), 403
+    data = request.get_json(silent=True)
+    if (not isinstance(data, dict) or set(data) != {'reference_number'}
+            or not isinstance(data.get('reference_number'), str)
+            or not data['reference_number'].strip()):
+        return jsonify({'error': 'Provide the confirmed PPMP document reference number.'}), 400
+    if data['reference_number'] != record.reference_number:
+        return jsonify({'error': 'This PPMP document has changed. Refresh the documents list before deleting.'}), 409
+    PPMPRecordItem.query.filter_by(ppmp_record_id=record.id).order_by(
+        PPMPRecordItem.id,
+    ).with_for_update().all()
+    if not can_delete_ppmp_record(user, record):
+        return jsonify({
+            'error': 'Only a never-submitted Draft PPMP document without linked requests, '
+                     'procurement records, comments, or review history can be deleted.'
+        }), 409
+    reference_number = record.reference_number
+    audit('ppmp_record', record.id, 'PPMP_DRAFT_DELETED', {
+        'reference_number': reference_number,
+        'office_id': record.office_id,
+        'fiscal_year': record.fiscal_year,
+        'item_count': len(record.items),
+    })
+    db.session.delete(record)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'This PPMP document is linked to another record and cannot be deleted.'}), 409
+    return jsonify({
+        'deleted': record_id,
+        'reference_number': reference_number,
+        'message': 'Draft PPMP document deleted.',
+    })
 
 
 @app.route('/api/ppmp-records/<int:record_id>/items', methods=['POST'])

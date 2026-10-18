@@ -981,7 +981,7 @@ td.center{text-align:center}
 
     <div class="card">
       <div class="card-header"><span class="card-title">PPMP Documents</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Wishlist Rows</th><th>Total Budget</th><th>Status</th><th>Action</th></tr></thead><tbody id="ppmp-record-list"><tr><td colspan="7">No PPMP documents.</td></tr></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Wishlist Rows</th><th>Total Budget</th><th>Status</th><th>Action</th><th>Delete</th></tr></thead><tbody id="ppmp-record-list"><tr><td colspan="8">No PPMP documents.</td></tr></tbody></table></div>
     </div>
 
     <div id="ppmp-record-workspace" hidden>
@@ -1484,6 +1484,9 @@ let wishlistOrders = [];
 let selectedPPMPRecordId = null;
 let ppmpRecordOpenRequest = 0;
 let pendingPPMPRecordId = null;
+let ppmpPlanningLoadRequest = 0;
+const deletingPPMPRecordIds = new Set();
+const deletedPPMPRecordReferences = new Set();
 let appPlans = [];
 let appMetadata = {};
 let selectedAPPId = null;
@@ -3296,12 +3299,13 @@ function formatPPMPMonth(value) {
 
 async function loadPPMPRequests() {
   if (!currentUser || !hasClientPermission('ppmp.order.view')) return;
-  const [requests, records, orders, offices] = await Promise.all([
+  const [requests, loadedRecords, orders, offices] = await Promise.all([
     apiFetch(`${API}/ppmp-requests`, { loadingMessage: 'Loading EO submission requests...' }),
     apiFetch(`${API}/ppmp-records`, { loadingMessage: 'Loading PPMP records...' }),
     apiFetch(`${API}/ppmp-orders`, { loadingMessage: 'Loading Wishlist requests...' }),
     apiFetch(`${API}/colleges`, { showLoading: false }),
   ]);
+  const records = loadedRecords.filter(record => !deletedPPMPRecordReferences.has(record.reference_number));
   ppmpSubmissionRequests = requests;
   ppmpRecords = records;
   wishlistOrders = orders;
@@ -3429,26 +3433,77 @@ async function saveWishlistOrderComment(button) {
   }
 }
 
-async function loadPPMPPlanning() {
+function renderPPMPRecordList() {
+  const records = ppmpRecords.filter(record => !deletedPPMPRecordReferences.has(record.reference_number));
+  document.getElementById('badge-total').textContent = records.reduce((total, record) => total + record.item_count, 0);
+  const body = document.getElementById('ppmp-record-list');
+  body.innerHTML = records.length ? records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" onclick="selectPPMPRecord(${record.id})">Open</button></td><td>${record.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deletePPMPRecord(${record.id},this)"${deletingPPMPRecordIds.has(record.id) ? ' disabled' : ''}>${deletingPPMPRecordIds.has(record.id) ? 'Deleting...' : 'Delete'}</button>` : '—'}</td></tr>`).join('') : '<tr><td colspan="8">No PPMP documents. An authorized office user can create a Draft.</td></tr>';
+}
+
+async function loadPPMPPlanning({ keepWorkspaceClosed = false } = {}) {
   if (!document.getElementById('ppmp-record-list')) return;
+  const loadRequest = ++ppmpPlanningLoadRequest;
   const openRequest = ppmpRecordOpenRequest;
   const openingRecord = pendingPPMPRecordId && pendingPPMPRecordId === selectedPPMPRecordId;
-  const [records, requests, orders] = await Promise.all([
+  const [loadedRecords, requests, orders] = await Promise.all([
     apiFetch(`${API}/ppmp-records`, { loadingMessage: 'Loading PPMP Wishlist records...' }),
     apiFetch(`${API}/ppmp-requests`, { showLoading: false }),
     apiFetch(`${API}/ppmp-orders`, { showLoading: false }),
   ]);
-  if (openingRecord || (pendingPPMPRecordId && pendingPPMPRecordId === selectedPPMPRecordId) || openRequest !== ppmpRecordOpenRequest) return;
+  if (loadRequest !== ppmpPlanningLoadRequest || openingRecord || (pendingPPMPRecordId && pendingPPMPRecordId === selectedPPMPRecordId) || openRequest !== ppmpRecordOpenRequest) return;
+  const records = loadedRecords.filter(record => !deletedPPMPRecordReferences.has(record.reference_number));
   ppmpRecords = records;
   ppmpSubmissionRequests = requests;
   wishlistOrders = orders;
-  document.getElementById('badge-total').textContent = records.reduce((total, record) => total + record.item_count, 0);
-
-  const body = document.getElementById('ppmp-record-list');
-  body.innerHTML = records.length ? records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" onclick="selectPPMPRecord(${record.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No PPMP documents. An authorized office user can create a Draft.</td></tr>';
+  renderPPMPRecordList();
   if (selectedPPMPRecordId && !records.some(record => record.id === selectedPPMPRecordId)) selectedPPMPRecordId = null;
-  if (!selectedPPMPRecordId && records.length) selectedPPMPRecordId = records[0].id;
+  if (!selectedPPMPRecordId && records.length && !keepWorkspaceClosed) selectedPPMPRecordId = records[0].id;
   renderPPMPRecordWorkspace();
+}
+
+async function deletePPMPRecord(recordId, button) {
+  const selectedId = Number(recordId);
+  if (!Number.isSafeInteger(selectedId) || selectedId <= 0 || deletingPPMPRecordIds.has(selectedId)) return;
+  const record = ppmpRecords.find(row => row.id === selectedId);
+  if (!record?.can_delete || deletedPPMPRecordReferences.has(record.reference_number)) return;
+  const reference = record.reference_number;
+  const rowCount = Number(record.item_count || 0);
+  if (!confirm(`Delete ${reference} and its ${fmtNum(rowCount)} draft Wishlist row(s)? This cannot be undone.`)) return;
+  deletingPPMPRecordIds.add(selectedId);
+  button.disabled = true;
+  button.textContent = 'Deleting...';
+  try {
+    await apiFetch(`${API}/ppmp-records/${selectedId}`, { method: 'DELETE', body: JSON.stringify({ reference_number: reference }), loadingMessage: 'Deleting PPMP draft...' });
+  } catch (error) {
+    deletingPPMPRecordIds.delete(selectedId);
+    renderPPMPRecordList();
+    showToast(error.message, 'Delete PPMP Draft', 'error');
+    return;
+  }
+
+  deletedPPMPRecordReferences.add(reference);
+  deletingPPMPRecordIds.delete(selectedId);
+  ppmpPlanningLoadRequest += 1;
+  ppmpRecords = ppmpRecords.filter(row => row.reference_number !== reference);
+  const deletedSelectedRecord = selectedPPMPRecordId === selectedId;
+  const deletedPendingRecord = pendingPPMPRecordId === selectedId;
+  if (deletedPendingRecord || (deletedSelectedRecord && !pendingPPMPRecordId)) {
+    ppmpRecordOpenRequest += 1;
+    pendingPPMPRecordId = null;
+  }
+  if (deletedSelectedRecord) {
+    selectedPPMPRecordId = pendingPPMPRecordId || null;
+    document.getElementById('ppmp-record-workspace').hidden = true;
+    resetPPMPItemForm();
+  }
+  renderPPMPRecordList();
+  showToast(`${reference} and its draft Wishlist rows were deleted.`, 'PPMP Draft', 'success');
+  const refreshed = await Promise.allSettled([
+    loadPPMPPlanning({ keepWorkspaceClosed: deletedSelectedRecord && !selectedPPMPRecordId }), loadPPMPDashboard(), loadPPMPRequests(),
+  ]);
+  if (refreshed.some(result => result.status === 'rejected')) {
+    showToast('The draft was deleted, but some lists could not be refreshed. Refresh the page to load the latest records.', 'PPMP Draft', 'warning');
+  }
 }
 
 async function selectPPMPRecord(recordId) {
@@ -3463,6 +3518,7 @@ async function selectPPMPRecord(recordId) {
     const record = await apiFetch(`${API}/ppmp-records/${selectedId}`, { loadingMessage: 'Opening PPMP document...' });
     if (requestId !== ppmpRecordOpenRequest || selectedPPMPRecordId !== selectedId) return;
     if (!record || record.id !== selectedId) throw new Error('The requested PPMP document could not be loaded.');
+    if (deletedPPMPRecordReferences.has(record.reference_number)) return;
     const recordIndex = ppmpRecords.findIndex(row => row.id === selectedId);
     if (recordIndex === -1) ppmpRecords.push(record);
     else ppmpRecords[recordIndex] = record;
