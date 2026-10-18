@@ -3554,10 +3554,7 @@ function renderPPMPRecordWorkspace() {
   document.getElementById('ppmp-item-form-card').hidden = true;
   document.getElementById('ppmp-admin-comment-form').hidden = currentUser.role !== 'ADMIN';
 
-  const actions = [];
-  if (editable) actions.push(`<button class="btn btn-primary" onclick="submitPPMPRecord(${record.id},this)">${record.status === 'Returned' ? 'Resubmit PPMP' : 'Submit PPMP'}</button>`);
-  actions.push(ppmpRecordReviewActions(record));
-  document.getElementById('ppmp-record-actions').innerHTML = actions.join('') || '<span class="text-xs text-muted">View only</span>';
+  document.getElementById('ppmp-record-actions').innerHTML = ppmpRecordReviewActions(record);
 
   const itemBody = document.getElementById('ppmp-record-item-list');
   itemBody.innerHTML = record.items.length ? record.items.map(item => {
