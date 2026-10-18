@@ -974,9 +974,9 @@ td.center{text-align:center}
     <div class="card" data-permission="ppmp.record.create" id="ppmp-record-create-card">
       <div class="card-header"><span class="card-title">Create PPMP Draft</span></div>
       <div class="card-body"><div class="filter-row">
-        <input class="filter-input" id="ppmp-record-year" type="number" min="2026" max="2100" step="1" placeholder="Fiscal year" aria-label="Fiscal year" required>
-        <button class="btn btn-primary" type="button" onclick="createPPMPRecord(this)">Create Draft</button>
-      </div></div>
+        <select class="filter-select" id="ppmp-record-year" aria-label="Fiscal year" aria-describedby="ppmp-record-year-hint" required disabled><option value="">Select fiscal year</option></select>
+        <button class="btn btn-primary" id="ppmp-record-create-button" type="button" onclick="createPPMPRecord(this)" disabled>Create Draft</button>
+      </div><div class="form-hint" id="ppmp-record-year-hint" aria-live="polite">Loading fiscal years from your existing PPMP requests...</div></div>
     </div>
 
     <div class="card">
@@ -1481,6 +1481,7 @@ let dashboardWishlistSearchVersion = 0;
 let ppmpRecords = [];
 let ppmpSubmissionRequests = [];
 let wishlistOrders = [];
+let creatingPPMPRecord = false;
 let selectedPPMPRecordId = null;
 let ppmpRecordOpenRequest = 0;
 let pendingPPMPRecordId = null;
@@ -1794,7 +1795,6 @@ function populateWorkflowSelects() {
   populate('ppmp-item-project-type', systemMetadata.project_types || [], 'Select project type');
   populate('order-quarter', systemMetadata.quarters || [], 'Select quarter');
   if (document.getElementById('order-year')) document.getElementById('order-year').value = year;
-  if (document.getElementById('ppmp-record-year')) document.getElementById('ppmp-record-year').value = Math.max(2026, year);
   if (document.getElementById('submission-request-year')) document.getElementById('submission-request-year').value = year;
 }
 
@@ -3309,6 +3309,7 @@ async function loadPPMPRequests() {
   ppmpSubmissionRequests = requests;
   ppmpRecords = records;
   wishlistOrders = orders;
+  renderPPMPDraftYearOptions();
 
   const officeSelect = document.getElementById('submission-request-office');
   if (officeSelect) {
@@ -3455,6 +3456,7 @@ async function loadPPMPPlanning({ keepWorkspaceClosed = false } = {}) {
   ppmpRecords = records;
   ppmpSubmissionRequests = requests;
   wishlistOrders = orders;
+  renderPPMPDraftYearOptions();
   renderPPMPRecordList();
   if (selectedPPMPRecordId && !records.some(record => record.id === selectedPPMPRecordId)) selectedPPMPRecordId = null;
   if (!selectedPPMPRecordId && records.length && !keepWorkspaceClosed) selectedPPMPRecordId = records[0].id;
@@ -3485,6 +3487,7 @@ async function deletePPMPRecord(recordId, button) {
   deletingPPMPRecordIds.delete(selectedId);
   ppmpPlanningLoadRequest += 1;
   ppmpRecords = ppmpRecords.filter(row => row.reference_number !== reference);
+  renderPPMPDraftYearOptions();
   const deletedSelectedRecord = selectedPPMPRecordId === selectedId;
   const deletedPendingRecord = pendingPPMPRecordId === selectedId;
   if (deletedPendingRecord || (deletedSelectedRecord && !pendingPPMPRecordId)) {
@@ -3579,21 +3582,70 @@ function renderPPMPRecordWorkspace() {
   document.getElementById('ppmp-record-comments').innerHTML = comments.length ? comments.map(comment => `<div class="comment-entry"><div class="comment-entry-meta">${escapeHtml(comment.author)} · ${escapeHtml(comment.role || 'System')} · ${comment.created_at ? new Date(comment.created_at).toLocaleString() : ''}${comment.ppmp_record_item_id ? ' · Item-specific' : ''}</div><div class="comment-entry-message">${escapeHtml(comment.message)}</div></div>`).join('') : '<div class="text-muted text-xs">No comments have been recorded.</div>';
 }
 
+function ppmpDraftYearAvailability() {
+  const validYear = year => Number.isInteger(year) && year >= 2026 && year <= 2100;
+  const requestedYears = [...new Set(wishlistOrders
+    .filter(order => currentUser && order.requested_by === currentUser.id && order.office_id === currentUser.college_id)
+    .map(order => Number(order.fiscal_year)).filter(validYear))].sort((left, right) => left - right);
+  const existingYears = new Set(ppmpRecords
+    .filter(record => currentUser && record.office_id === currentUser.college_id && !deletedPPMPRecordReferences.has(record.reference_number))
+    .map(record => Number(record.fiscal_year)).filter(validYear));
+  return { requestedYears, existingYears, eligibleYears: requestedYears.filter(year => !existingYears.has(year)) };
+}
+
+function renderPPMPDraftYearOptions() {
+  const select = document.getElementById('ppmp-record-year');
+  const button = document.getElementById('ppmp-record-create-button');
+  const hint = document.getElementById('ppmp-record-year-hint');
+  if (!select || !button || !hint) return;
+  const previousYear = Number(select.value);
+  const { requestedYears, existingYears, eligibleYears } = ppmpDraftYearAvailability();
+  select.replaceChildren(new Option('Select fiscal year', ''), ...requestedYears.map(year => {
+    const existing = existingYears.has(year);
+    const option = new Option(`${year}${existing ? ' - PPMP document already exists' : ''}`, String(year));
+    option.disabled = existing;
+    return option;
+  }));
+  select.value = eligibleYears.includes(previousYear) ? String(previousYear) : eligibleYears.length === 1 ? String(eligibleYears[0]) : '';
+  select.disabled = creatingPPMPRecord || !eligibleYears.length;
+  button.disabled = creatingPPMPRecord || !eligibleYears.length;
+  button.textContent = creatingPPMPRecord ? 'Creating...' : 'Create Draft';
+  hint.textContent = !requestedYears.length ? 'No existing PPMP requests were found for your account and office.' :
+    !eligibleYears.length ? 'A PPMP document already exists for every fiscal year in your requests.' :
+    'Choose a fiscal year from your existing PPMP requests.';
+}
+
 async function createPPMPRecord(button) {
+  if (creatingPPMPRecord) return;
   const fiscalYearInput = document.getElementById('ppmp-record-year');
   if (!fiscalYearInput.reportValidity()) return;
-  button.disabled = true;
+  const fiscalYear = Number(fiscalYearInput.value);
+  const { requestedYears, existingYears } = ppmpDraftYearAvailability();
+  if (!requestedYears.includes(fiscalYear)) {
+    renderPPMPDraftYearOptions();
+    return showToast('Choose a fiscal year from your existing PPMP requests.', 'PPMP Draft', 'warning');
+  }
+  if (existingYears.has(fiscalYear)) {
+    renderPPMPDraftYearOptions();
+    return showToast('A PPMP document already exists for this office and fiscal year.', 'PPMP Draft', 'warning');
+  }
+  creatingPPMPRecord = true;
+  renderPPMPDraftYearOptions();
   try {
     const record = await apiFetch(`${API}/ppmp-records`, { method: 'POST', body: JSON.stringify({
-      fiscal_year: fiscalYearInput.valueAsNumber,
+      fiscal_year: fiscalYear,
     }), loadingMessage: 'Creating PPMP Draft...' });
+    const recordIndex = ppmpRecords.findIndex(row => row.id === record.id);
+    if (recordIndex === -1) ppmpRecords.push(record);
+    else ppmpRecords[recordIndex] = record;
     selectedPPMPRecordId = record.id;
     await Promise.all([loadPPMPPlanning(), loadPPMPRequests()]);
     showToast(`${record.reference_number} is ready for Wishlist items.`, 'PPMP Draft', 'success');
   } catch (error) {
     showToast(error.message, 'PPMP Draft', 'error');
   } finally {
-    button.disabled = false;
+    creatingPPMPRecord = false;
+    renderPPMPDraftYearOptions();
   }
 }
 

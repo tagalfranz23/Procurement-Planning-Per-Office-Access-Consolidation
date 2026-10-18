@@ -1790,6 +1790,10 @@ def ppmp_records():
         return jsonify({'error': 'A valid fiscal year is required.'}), 400
     if fiscal_year < 2026 or fiscal_year > 2100:
         return jsonify({'error': 'Fiscal year must be between 2026 and 2100.'}), 400
+    if not PPMPOrder.query.filter_by(
+        fiscal_year=fiscal_year, office_id=office.id, requested_by=user.id,
+    ).first():
+        return jsonify({'error': 'Choose a fiscal year from one of your existing PPMP requests.'}), 400
     submission_request = None
     raw_submission_request_id = data.get('submission_request_id')
     if raw_submission_request_id is not None and raw_submission_request_id != '':
