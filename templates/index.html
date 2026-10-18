@@ -1146,7 +1146,7 @@ td.center{text-align:center}
 
   <!-- ══ REPORTS ════════════════════════════════════ -->
   <section class="panel" id="panel-ppmp-request-records">
-    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Fiscal Year</th><th>Quarter</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="report-records"><tr><td colspan="10">No submitted item records.</td></tr></tbody></table></div></div>
+    <div class="card mt-12" id="ppmp-request-records-card"><div class="card-header"><span class="card-title">PPMP Request Records</span><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('ppmp-requests',document.getElementById('ppmp-request-nav'))">Back</button></div><div class="table-wrap"><table><thead><tr><th>Reference</th><th>Fiscal Year</th><th>Quarter</th><th>Office</th><th>PPMP User</th><th>Submitted</th><th>Items</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="report-records"><tr><td colspan="10">No submitted item records.</td></tr></tbody></table></div></div>
   </section>
 
   <section class="panel" id="panel-reports">
@@ -2956,6 +2956,10 @@ async function openPPMPRequestRecords(navEl = document.getElementById('reports-p
   }
 }
 
+function openPPMPRequestRecordsFromWishlistRequests() {
+  return openPPMPRequestRecords(document.getElementById('reports-ppmp-request-nav'), null);
+}
+
 function setAdminOverviewMenuExpanded(expanded) {
   const submenu = document.getElementById('admin-overview-submenu');
   const toggle = document.getElementById('admin-submenu-toggle');
@@ -3343,7 +3347,7 @@ function ppmpRecordReviewActions(record) {
 
 function ppmpOrderActions(order) {
   if (!currentUser) return '';
-  const buttons = [];
+  const buttons = [`<button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestRecordsFromWishlistRequests()">Open</button>`];
   if (currentPermissions.includes('ppmp.order.create') && order.office_id === currentUser.college_id && order.status === 'Returned') {
     buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionPPMPOrder(${order.id},'submit',this)">Resubmit</button>`);
   }
@@ -3357,7 +3361,7 @@ function ppmpOrderActions(order) {
   if (currentUser.role === 'ADMIN' && order.status === 'Approved') buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionPPMPOrder(${order.id},'process',this)">Start Processing</button>`);
   if (currentUser.role === 'ADMIN' && order.status === 'Processing') buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'complete',this)">Complete</button>`);
   if (currentUser.role === 'ADMIN') buttons.push(`<button class="btn btn-ghost btn-sm" onclick="addWishlistOrderComment(${order.id},this)">Comment</button>`);
-  return buttons.join('') || '<span class="text-xs text-muted">View only</span>';
+  return buttons.join('');
 }
 
 async function createPPMPSubmissionRequest(button) {
