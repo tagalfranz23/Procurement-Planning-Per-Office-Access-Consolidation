@@ -852,7 +852,7 @@ td.center{text-align:center}
     <div class="card">
       <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('cse-selected-items')">Review Current PPMP Items</button></div>{% endif %}</div>
       <div class="card-body"><div class="filter-row"><input class="filter-input" id="dashboard-wishlist-search" placeholder="Search item name, category, unit, or office…" oninput="queueDashboardWishlistSearch()"></div></div>
-      <div class="table-wrap"><table><thead><tr><th>Item</th><th>Office / Source</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th></tr></thead><tbody id="dashboard-wishlist-list"><tr><td colspan="6">No CSE Master List items available.</td></tr></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th></tr></thead><tbody id="dashboard-wishlist-list"><tr><td colspan="5">No CSE Master List items available.</td></tr></tbody></table></div>
     </div>
     {% endif %}
   </section>
@@ -3134,8 +3134,8 @@ async function loadDashboardWishlist(showLoading = false) {
     const action = currentUser.role === 'ADMIN'
       ? '<button class="btn btn-ghost btn-sm" type="button" onclick="showPanel(\'ppmp-wishlist\')">Manage in CSE Master List</button>'
       : `<div class="management-actions"><input class="filter-input" id="dashboard-master-quantity-${item.id}" type="number" min="0.01" value="1" style="min-width:76px;width:76px"><button class="btn btn-primary btn-sm" type="button" onclick="addMasterOrderItem(${item.id},this,'dashboard-master-quantity-${item.id}')">Add to Current PPMP Items</button></div>`;
-    return `<tr><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.office || 'Administrator CSE list')}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td><td>${action}</td></tr>`;
-  }).join('') : '<tr><td colspan="6">No CSE Master List items match this search.</td></tr>';
+    return `<tr><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td><td>${action}</td></tr>`;
+  }).join('') : '<tr><td colspan="5">No CSE Master List items match this search.</td></tr>';
 }
 
 function openCustomPPMPItem() {
