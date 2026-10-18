@@ -2811,12 +2811,7 @@ def ppmp_request_report_payload(order, user):
         'end_user_or_implementing_unit': (
             order.office.name if order.office and order.office.name else order.office.code if order.office else ''
         ),
-        'editable': bool(
-            is_ppmp_office_role(user.role)
-            and user.college_id == order.office_id
-            and order.requested_by == user.id
-            and order.status in PPMP_REPORT_PENDING_STATUSES
-        ),
+        'editable': order.status in PPMP_REPORT_PENDING_STATUSES,
         'procurement_types': PPMP_ORDER_TYPES,
         'procurement_methods': PPMP_REPORT_PROCUREMENT_METHODS,
         'fund_sources': PPMP_ORDER_FUND_SOURCES,
@@ -2904,12 +2899,7 @@ def update_ppmp_request_report_item(order_id, item_id):
     order, error = authorized_ppmp_request_report(user, order_id)
     if error:
         return error
-    if not (
-        is_ppmp_office_role(user.role)
-        and user.college_id == order.office_id
-        and order.requested_by == user.id
-    ):
-        return jsonify({'error': 'Only the requesting PPMP user can complete the editable PPMP report fields.'}), 403
+
     item = PPMPOrderItem.query.filter_by(id=item_id, order_id=order.id).one_or_none()
     if item is None:
         return jsonify({'error': 'Requested item not found in this PPMP Request Record.'}), 404
@@ -2934,12 +2924,7 @@ def update_ppmp_request_report_items(order_id):
     order, error = authorized_ppmp_request_report(user, order_id)
     if error:
         return error
-    if not (
-        is_ppmp_office_role(user.role)
-        and user.college_id == order.office_id
-        and order.requested_by == user.id
-    ):
-        return jsonify({'error': 'Only the requesting PPMP user can complete the editable PPMP report fields.'}), 403
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or set(data) != {'items'}:
         return jsonify({'error': 'Provide the report items to save.'}), 400
