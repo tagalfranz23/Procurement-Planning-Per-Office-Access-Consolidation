@@ -3437,7 +3437,7 @@ function renderPPMPRecordList() {
   body.innerHTML = records.length ? records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" onclick="selectPPMPRecord(${record.id})">Open</button></td><td>${record.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deletePPMPRecord(${record.id},this)"${deletingPPMPRecordIds.has(record.id) ? ' disabled' : ''}>${deletingPPMPRecordIds.has(record.id) ? 'Deleting...' : 'Delete'}</button>` : '—'}</td></tr>`).join('') : '<tr><td colspan="8">No PPMP documents. An authorized office user can create a Draft.</td></tr>';
 }
 
-async function loadPPMPPlanning({ keepWorkspaceClosed = false } = {}) {
+async function loadPPMPPlanning() {
   if (!document.getElementById('ppmp-record-list')) return;
   const loadRequest = ++ppmpPlanningLoadRequest;
   const openRequest = ppmpRecordOpenRequest;
@@ -3455,7 +3455,6 @@ async function loadPPMPPlanning({ keepWorkspaceClosed = false } = {}) {
   renderPPMPDraftYearOptions();
   renderPPMPRecordList();
   if (selectedPPMPRecordId && !records.some(record => record.id === selectedPPMPRecordId)) selectedPPMPRecordId = null;
-  if (!selectedPPMPRecordId && records.length && !keepWorkspaceClosed) selectedPPMPRecordId = records[0].id;
   renderPPMPRecordWorkspace();
 }
 
@@ -3498,7 +3497,7 @@ async function deletePPMPRecord(recordId, button) {
   renderPPMPRecordList();
   showToast(`${reference} and its draft Wishlist rows were deleted.`, 'PPMP Draft', 'success');
   const refreshed = await Promise.allSettled([
-    loadPPMPPlanning({ keepWorkspaceClosed: deletedSelectedRecord && !selectedPPMPRecordId }), loadPPMPDashboard(), loadPPMPRequests(),
+    loadPPMPPlanning(), loadPPMPDashboard(), loadPPMPRequests(),
   ]);
   if (refreshed.some(result => result.status === 'rejected')) {
     showToast('The draft was deleted, but some lists could not be refreshed. Refresh the page to load the latest records.', 'PPMP Draft', 'warning');
@@ -3629,7 +3628,6 @@ async function createPPMPRecord(button) {
     const recordIndex = ppmpRecords.findIndex(row => row.id === record.id);
     if (recordIndex === -1) ppmpRecords.push(record);
     else ppmpRecords[recordIndex] = record;
-    selectedPPMPRecordId = record.id;
     await Promise.all([loadPPMPPlanning(), loadPPMPRequests()]);
     showToast(`${record.reference_number} is ready for Wishlist items.`, 'PPMP Draft', 'success');
   } catch (error) {
