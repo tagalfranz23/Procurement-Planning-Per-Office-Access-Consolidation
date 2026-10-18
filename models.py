@@ -701,6 +701,7 @@ class PPMPOrder(db.Model):
     office_id = db.Column(db.Integer, db.ForeignKey('colleges.id', ondelete='RESTRICT'), nullable=True)
     requested_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     fiscal_year = db.Column(db.SmallInteger, nullable=False, default=lambda: datetime.utcnow().year)
+    ppmp_document_number = db.Column(db.Integer, nullable=False, default=1)
     fund_source = db.Column(db.String(80), nullable=True)
     mode_of_procurement = db.Column(db.String(120), nullable=True)
     procurement_type = db.Column(db.String(80), nullable=True)

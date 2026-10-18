@@ -495,7 +495,7 @@ def verify_database_schema():
         'ppmp_orders': {
             'reference_number', 'office_id', 'requested_by', 'fiscal_year',
             'fund_source', 'mode_of_procurement', 'procurement_type', 'quarter',
-            'status', 'legacy_wishlist_request_id',
+            'ppmp_document_number', 'status', 'legacy_wishlist_request_id',
         },
         'ppmp_order_items': {
             'order_id', 'master_item_id', 'wishlist_item_id', 'legacy_wishlist_item_id',
@@ -619,6 +619,7 @@ def migrate_revision_schema():
     order_columns = {column['name'] for column in inspector.get_columns('ppmp_orders')}
     order_additions = {
         'fiscal_year': 'SMALLINT NULL',
+        'ppmp_document_number': 'INTEGER NOT NULL DEFAULT 1',
         'fund_source': 'VARCHAR(80) NULL',
         'mode_of_procurement': 'VARCHAR(120) NULL',
         'procurement_type': 'VARCHAR(80) NULL',
@@ -2808,6 +2809,7 @@ def ppmp_request_report_payload(order, user):
     return {
         'id': order.id,
         'fiscal_year': order.fiscal_year,
+        'ppmp_document_number': order.ppmp_document_number,
         'end_user_or_implementing_unit': (
             order.office.name if order.office and order.office.name else order.office.code if order.office else ''
         ),
@@ -2926,11 +2928,18 @@ def update_ppmp_request_report_items(order_id):
         return error
 
     data = request.get_json(silent=True)
-    if not isinstance(data, dict) or set(data) != {'items'}:
-        return jsonify({'error': 'Provide the report items to save.'}), 400
+    if not isinstance(data, dict) or set(data) - {'items', 'ppmp_document_number'} or 'items' not in data:
+        return jsonify({'error': 'Provide report changes to save.'}), 400
     rows = data['items']
-    if not isinstance(rows, list) or not rows:
-        return jsonify({'error': 'Provide at least one report item to save.'}), 400
+    if not isinstance(rows, list):
+        return jsonify({'error': 'Report items must be a list.'}), 400
+    document_number = None
+    if 'ppmp_document_number' in data:
+        document_number = data['ppmp_document_number']
+        if type(document_number) is not int or not 1 <= document_number <= 999999999:
+            return jsonify({'error': 'PPMP document number must be a positive whole number.'}), 400
+    if not rows and document_number is None:
+        return jsonify({'error': 'Provide at least one report change to save.'}), 400
     validated_rows = []
     item_ids = set()
     for row in rows:
@@ -2961,6 +2970,12 @@ def update_ppmp_request_report_items(order_id):
             setattr(item, field_name, value)
         audit('ppmp_order_item', item.id, 'REPORT_FIELDS_UPDATED', {
             'order_id': order.id, 'fields': sorted(changes),
+        })
+    if document_number is not None and document_number != order.ppmp_document_number:
+        previous_number = order.ppmp_document_number
+        order.ppmp_document_number = document_number
+        audit('ppmp_order', order.id, 'REPORT_NUMBER_UPDATED', {
+            'from': previous_number, 'to': document_number,
         })
     db.session.commit()
     return jsonify(ppmp_request_report_payload(order, user))
@@ -3188,7 +3203,7 @@ def export_selected_ppmp_request_pdf(order_id):
     logo_path = os.path.join(app.root_path, 'static', 'isu-seal.jpg')
     logo = ReportImage(logo_path, width=20 * mm, height=20 * mm)
     header = Table([
-        [logo, Paragraph('PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. 1', title_style)],
+        [logo, Paragraph(f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {order.ppmp_document_number}', title_style)],
     ], colWidths=[28 * mm, 360 * mm])
     header.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -3247,13 +3262,17 @@ def export_selected_ppmp_request_excel(order_id):
     sheet = workbook.active
     sheet.title = 'PPMP Report'
     office_name = order.office.name if order.office and order.office.name else order.office.code if order.office else ''
+    sheet.append([f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {order.ppmp_document_number}'])
+    sheet.merge_cells('A1:L1')
+    sheet['A1'].font = Font(bold=True, size=14)
+    sheet['A1'].alignment = Alignment(horizontal='center', vertical='center')
     sheet.append(['Fiscal Year:', order.fiscal_year])
     sheet.append(['End-User or Implementing Unit:', office_name])
     sheet.append([])
     sheet.append(list(PPMP_REPORT_COLUMNS))
     for row in selected_ppmp_request_rows(order):
         sheet.append(row)
-    for cell in sheet[4]:
+    for cell in sheet[5]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='D9EAF7')
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -3261,7 +3280,7 @@ def export_selected_ppmp_request_excel(order_id):
             left=Side(style='thin'), right=Side(style='thin'),
             top=Side(style='thin'), bottom=Side(style='thin'),
         )
-    for row in sheet.iter_rows(min_row=5, max_col=12):
+    for row in sheet.iter_rows(min_row=6, max_col=12):
         for cell in row:
             cell.alignment = Alignment(vertical='top', wrap_text=True)
             cell.border = Border(
@@ -3272,8 +3291,8 @@ def export_selected_ppmp_request_excel(order_id):
     widths = [42, 35, 24, 45, 28, 22, 22, 28, 22, 30, 40, 35]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
-    sheet.row_dimensions[4].height = 90
-    sheet.freeze_panes = 'A5'
+    sheet.row_dimensions[5].height = 90
+    sheet.freeze_panes = 'A6'
     sheet.page_setup.orientation = 'landscape'
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
