@@ -204,7 +204,7 @@ class PPMPItem(db.Model):
     unit_cost           = db.Column(DECIMAL(15, 2), nullable=False, default=0)
     authorized_budget   = db.Column(DECIMAL(18, 2), nullable=True)
     fund_source         = db.Column(db.String(80), nullable=False)
-    mode_of_procurement = db.Column(db.String(120), nullable=False)
+    mode_of_procurement = db.Column(db.String(255), nullable=False)
     procurement_type    = db.Column(db.String(80), nullable=False, default='Goods')
     quarter             = db.Column(Enum(*QUARTERS,            name='quarter_enum'),      nullable=True)
     remarks             = db.Column(Text, nullable=True)
@@ -361,7 +361,7 @@ class PPMPSubmissionRequest(db.Model):
 
 
 class PPMPRecord(db.Model):
-    """The office-level PPMP document; its workflow is separate from item orders."""
+    """Office-level planning document retained for historical records."""
     __tablename__ = 'ppmp_records'
 
     STATUSES = (
@@ -377,6 +377,10 @@ class PPMPRecord(db.Model):
     )
     office_id = db.Column(db.Integer, db.ForeignKey('colleges.id', ondelete='RESTRICT'), nullable=False)
     fiscal_year = db.Column(db.SmallInteger, nullable=False)
+    source_order_id = db.Column(
+        db.Integer, db.ForeignKey('ppmp_orders.id', ondelete='RESTRICT'), nullable=True, unique=True,
+    )
+    ppmp_document_number = db.Column(db.Integer, nullable=False, default=1, server_default='1')
     status = db.Column(db.String(32), nullable=False, default='Draft')
     prepared_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     decision_note = db.Column(Text, nullable=True)
@@ -389,6 +393,7 @@ class PPMPRecord(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     office = db.relationship('College')
+    source_order = db.relationship('PPMPOrder', foreign_keys=[source_order_id])
     submission_request = db.relationship('PPMPSubmissionRequest')
     preparer = db.relationship('User', foreign_keys=[prepared_by])
     reviewer = db.relationship('User', foreign_keys=[reviewed_by])
@@ -416,6 +421,9 @@ class PPMPRecord(db.Model):
             'office_code': self.office.code if self.office else '',
             'office_name': self.office.name if self.office else '',
             'fiscal_year': self.fiscal_year,
+            'source_order_id': self.source_order_id,
+            'ppmp_document_number': self.ppmp_document_number,
+            'is_indicative_copy': self.source_order_id is not None,
             'status': self.status,
             'prepared_by': self.prepared_by,
             'prepared_by_name': self.preparer.full_name if self.preparer else '',
@@ -449,7 +457,7 @@ class PPMPRecordItem(db.Model):
     project_type = db.Column(db.String(40), nullable=False)
     quantity = db.Column(DECIMAL(12, 2), nullable=False)
     unit_size = db.Column(db.String(80), nullable=False)
-    procurement_method = db.Column(db.String(120), nullable=False)
+    procurement_method = db.Column(db.String(255), nullable=False)
     pre_procurement_conference = db.Column(db.Boolean, nullable=True)
     procurement_start = db.Column(db.Date, nullable=True)
     procurement_end = db.Column(db.Date, nullable=True)
@@ -687,11 +695,11 @@ class WishlistRequest(db.Model):
 
 
 class PPMPOrder(db.Model):
-    """An actual Wishlist request, kept separate from its source PPMP document."""
+    """Official PPMP submission; pre-workflow orders remain historical records."""
     __tablename__ = 'ppmp_orders'
 
     STATUSES = (
-        'Requested', 'Pending Admin Approval',
+        'Draft', 'Requested', 'Pending Admin Approval',
         'Submitted', 'EO Review', 'Procurement Review',
         'Returned', 'Approved', 'Rejected', 'Processing', 'Completed',
     )
@@ -702,6 +710,8 @@ class PPMPOrder(db.Model):
     requested_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     fiscal_year = db.Column(db.SmallInteger, nullable=False, default=lambda: datetime.utcnow().year)
     ppmp_document_number = db.Column(db.Integer, nullable=False, default=1)
+    workflow_official = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
+    return_stage = db.Column(db.String(32), nullable=True)
     fund_source = db.Column(db.String(80), nullable=True)
     mode_of_procurement = db.Column(db.String(120), nullable=True)
     procurement_type = db.Column(db.String(80), nullable=True)
@@ -729,6 +739,16 @@ class PPMPOrder(db.Model):
 
     @property
     def approval_stage(self):
+        if self.workflow_official:
+            return {
+                'Draft': 'Office Preparation',
+                'Submitted': 'Procurement Review',
+                'Procurement Review': 'Procurement Review',
+                'Pending Admin Approval': 'Administrator Approval',
+                'Returned': 'Creator Revision',
+                'Approved': 'Final Approved PPMP',
+                'Rejected': 'Closed',
+            }.get(self.status, self.status)
         return {
             'Requested': 'Pending Administrator Review',
             'Pending Admin Approval': 'Administrator Review',
@@ -752,6 +772,9 @@ class PPMPOrder(db.Model):
             'requested_by': self.requested_by,
             'requester_name': self.requester.full_name if self.requester else '',
             'fiscal_year': self.fiscal_year,
+            'ppmp_document_number': self.ppmp_document_number,
+            'workflow_official': bool(self.workflow_official),
+            'return_stage': self.return_stage,
             'fund_source': self.fund_source,
             'mode_of_procurement': self.mode_of_procurement,
             'procurement_type': self.procurement_type,
@@ -769,6 +792,87 @@ class PPMPOrder(db.Model):
         }
         if include_items:
             result['items'] = [item.to_dict() for item in self.items]
+        return result
+
+
+class OfficialPPMP(db.Model):
+    """Reserve one official office/year without altering historical orders."""
+    __tablename__ = 'official_ppmps'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    office_id = db.Column(db.Integer, db.ForeignKey('colleges.id', ondelete='RESTRICT'), nullable=False)
+    fiscal_year = db.Column(db.SmallInteger, nullable=False)
+    source_order_id = db.Column(
+        db.Integer, db.ForeignKey('ppmp_orders.id', ondelete='RESTRICT'), nullable=False, unique=True,
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    office = db.relationship('College')
+    source_order = db.relationship('PPMPOrder', foreign_keys=[source_order_id])
+
+    __table_args__ = (
+        UniqueConstraint('office_id', 'fiscal_year', name='uq_official_ppmp_office_year'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'office_id': self.office_id, 'fiscal_year': self.fiscal_year,
+            'source_order_id': self.source_order_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class IndicativePPMPCopy(db.Model):
+    """An editable report snapshot that never changes its approved source PPMP."""
+    __tablename__ = 'indicative_ppmp_copies'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    reference_number = db.Column(db.String(40), nullable=False, unique=True)
+    source_order_id = db.Column(
+        db.Integer, db.ForeignKey('ppmp_orders.id', ondelete='RESTRICT'), nullable=False, unique=True,
+    )
+    office_id = db.Column(db.Integer, db.ForeignKey('colleges.id', ondelete='RESTRICT'), nullable=False)
+    fiscal_year = db.Column(db.SmallInteger, nullable=False)
+    prepared_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    ppmp_document_number = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    items = db.Column(JSON, nullable=False, default=list)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    source_order = db.relationship('PPMPOrder', foreign_keys=[source_order_id])
+    office = db.relationship('College')
+    preparer = db.relationship('User', foreign_keys=[prepared_by])
+
+    __table_args__ = (
+        UniqueConstraint('office_id', 'fiscal_year', name='uq_indicative_copy_office_year'),
+        CheckConstraint('ppmp_document_number > 0', name='ck_indicative_copy_number'),
+    )
+
+    @property
+    def total_budget(self):
+        return float(sum(
+            (Decimal(str(item.get('estimated_budget') or 0)) for item in (self.items or [])),
+            Decimal('0.00'),
+        ))
+
+    def to_dict(self, include_items=True):
+        result = {
+            'id': self.id, 'reference_number': self.reference_number,
+            'source_order_id': self.source_order_id,
+            'source_reference_number': self.source_order.reference_number if self.source_order else '',
+            'office_id': self.office_id,
+            'office_code': self.office.code if self.office else '',
+            'office_name': self.office.name if self.office else '',
+            'fiscal_year': self.fiscal_year, 'prepared_by': self.prepared_by,
+            'prepared_by_name': self.preparer.full_name if self.preparer else '',
+            'ppmp_document_number': self.ppmp_document_number,
+            'status': 'Indicative', 'is_indicative_copy': True,
+            'item_count': len(self.items or []), 'total_budget': self.total_budget,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_items:
+            result['items'] = self.items or []
         return result
 
 
@@ -968,6 +1072,14 @@ class AnnualProcurementPlan(db.Model):
     consolidation_batch_id = db.Column(db.Integer, db.ForeignKey('consolidation_batches.id', ondelete='RESTRICT'), nullable=True)
     source_type = db.Column(db.String(32), nullable=False, default='CONSOLIDATION')
     source_details = db.Column(JSON, nullable=True)
+    # Version 1 preserves existing APP permissions and historical review order.
+    workflow_version = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    current_review_role = db.Column(db.String(64), nullable=True)
+    return_review_role = db.Column(db.String(64), nullable=True)
+    revision = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    supplemental_parent_id = db.Column(
+        db.Integer, db.ForeignKey('annual_procurement_plans.id', ondelete='RESTRICT'), nullable=True,
+    )
     status = db.Column(db.String(32), nullable=False, default='Draft')
     created_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     remarks = db.Column(Text, nullable=True)
@@ -975,6 +1087,9 @@ class AnnualProcurementPlan(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     creator = db.relationship('User')
+    supplemental_parent = db.relationship(
+        'AnnualProcurementPlan', remote_side=[id], foreign_keys=[supplemental_parent_id],
+    )
     consolidation_batch = db.relationship('ConsolidationBatch')
     sections = db.relationship(
         'APPSection', back_populates='app', cascade='all, delete-orphan',
@@ -992,10 +1107,30 @@ class AnnualProcurementPlan(db.Model):
         'APPComment', back_populates='app', cascade='all, delete-orphan',
         order_by='APPComment.id', lazy='select',
     )
+    batch_links = db.relationship(
+        'APPBatchLink', back_populates='app', cascade='all, delete-orphan',
+        order_by='APPBatchLink.id', lazy='select',
+    )
+    workflow_registration = db.relationship(
+        'APPWorkflowRegistry', back_populates='app', cascade='all, delete-orphan', uselist=False,
+    )
     __table_args__ = (UniqueConstraint('office', 'fiscal_year', 'plan_type', name='uq_app_office_year_type'),)
 
     def totals(self):
         included = list(self.items)
+        cse_budget = Decimal('0.00')
+        for item in included:
+            if (self.workflow_version or 1) >= 2 and item.contributions:
+                # A merged row can include both catalog and custom sources.
+                # Count only the catalog allocations, using their revised APP
+                # budgets while preserving the approved PPMP snapshots.
+                cse_budget += sum((
+                    allocation.estimated_budget or Decimal('0.00')
+                    for allocation in item.contributions
+                    if (allocation.source_snapshot or {}).get('is_cse') is True
+                ), Decimal('0.00'))
+            elif self.plan_type == 'APP_CSE' or (item.section and 'CSE' in item.section.name.upper()):
+                cse_budget += item.estimated_budget or Decimal('0.00')
         by_section = {
             section.name: float(sum(
                 (item.estimated_budget or Decimal('0.00'))
@@ -1012,10 +1147,7 @@ class AnnualProcurementPlan(db.Model):
                 (item.estimated_budget or Decimal('0.00'))
                 for item in included if item.early_procurement_activity is True
             )),
-            'cse': float(sum(
-                (item.estimated_budget or Decimal('0.00')) for item in included
-                if self.plan_type == 'APP_CSE' or (item.section and 'CSE' in item.section.name.upper())
-            )),
+            'cse': float(cse_budget),
             'capital_outlay': float(sum(
                 (item.estimated_budget or Decimal('0.00')) for item in included
                 if item.section and 'CAPITAL OUTLAY' in item.section.name.upper()
@@ -1029,6 +1161,16 @@ class AnnualProcurementPlan(db.Model):
             'id': self.id, 'office': self.office, 'fiscal_year': self.fiscal_year,
             'plan_type': self.plan_type, 'consolidation_batch_id': self.consolidation_batch_id,
             'source_type': self.source_type, 'source_details': self.source_details or {},
+            'workflow_version': self.workflow_version,
+            'current_review_role': self.current_review_role,
+            'return_review_role': self.return_review_role,
+            'revision': self.revision,
+            'supplemental_parent_id': self.supplemental_parent_id,
+            'is_supplemental': self.supplemental_parent_id is not None,
+            'supplemental_number': (
+                self.workflow_registration.sequence if self.workflow_registration else None
+            ),
+            'batch_ids': [link.batch_id for link in self.batch_links],
             'status': self.status, 'remarks': self.remarks, 'created_by': self.created_by,
             'prepared_by_name': self.creator.full_name if self.creator else '',
             'item_count': len(self.items), 'section_count': len(self.sections),
@@ -1041,6 +1183,56 @@ class AnnualProcurementPlan(db.Model):
             result['approval_history'] = [approval.to_dict() for approval in self.approvals]
             result['comments'] = [comment.to_dict() for comment in self.comments]
         return result
+
+
+class APPWorkflowRegistry(db.Model):
+    """Allocate annual/supplemental APP identities without changing legacy keys."""
+    __tablename__ = 'app_workflow_registry'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    app_id = db.Column(
+        db.Integer, db.ForeignKey('annual_procurement_plans.id', ondelete='CASCADE'), nullable=False, unique=True,
+    )
+    fiscal_year = db.Column(db.SmallInteger, nullable=False)
+    # Zero is the annual APP; subsequent numbers identify supplements.
+    sequence = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    app = db.relationship('AnnualProcurementPlan', back_populates='workflow_registration')
+
+    __table_args__ = (
+        UniqueConstraint('fiscal_year', 'sequence', name='uq_app_workflow_year_sequence'),
+        CheckConstraint('sequence >= 0', name='ck_app_workflow_sequence'),
+    )
+
+
+class APPBatchLink(db.Model):
+    """Each consolidation batch contributes to exactly one APP."""
+    __tablename__ = 'app_batch_links'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    app_id = db.Column(
+        db.Integer, db.ForeignKey('annual_procurement_plans.id', ondelete='CASCADE'), nullable=False,
+    )
+    batch_id = db.Column(
+        db.Integer, db.ForeignKey('consolidation_batches.id', ondelete='RESTRICT'), nullable=False, unique=True,
+    )
+    added_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    app = db.relationship('AnnualProcurementPlan', back_populates='batch_links')
+    batch = db.relationship('ConsolidationBatch')
+    actor = db.relationship('User', foreign_keys=[added_by])
+
+    __table_args__ = (
+        UniqueConstraint('app_id', 'batch_id', name='uq_app_batch_link'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'app_id': self.app_id, 'batch_id': self.batch_id,
+            'added_by': self.added_by, 'added_at': self.added_at.isoformat() if self.added_at else None,
+        }
 
 
 class APPSection(db.Model):
@@ -1099,13 +1291,16 @@ class APPItem(db.Model):
     # Some official reference formats do not contain the 12-column APP's
     # general-description field. Normal interactive APP entry still requires it.
     general_description = db.Column(db.String(120), nullable=True)
-    mode_of_procurement = db.Column(db.String(180), nullable=False)
+    mode_of_procurement = db.Column(db.String(255), nullable=False)
     early_procurement_activity = db.Column(db.Boolean, nullable=True)
     bid_evaluation_criteria = db.Column(Text, nullable=True)
     procurement_start = db.Column(db.Date, nullable=True)
     procurement_end = db.Column(db.Date, nullable=True)
     source_of_fund = db.Column(db.String(120), nullable=False)
     estimated_budget = db.Column(DECIMAL(18, 2), nullable=False, default=0)
+    quantity = db.Column(DECIMAL(12, 2), nullable=False, default=0, server_default='0')
+    unit_size = db.Column(db.String(80), nullable=True)
+    merge_key = db.Column(db.String(64), nullable=True, index=True)
     procurement_strategy_tools = db.Column(Text, nullable=True)
     remarks = db.Column(Text, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
@@ -1116,6 +1311,10 @@ class APPItem(db.Model):
     section = db.relationship('APPSection', back_populates='items')
     source_ppmp_item = db.relationship('PPMPItem')
     creator = db.relationship('User')
+    contributions = db.relationship(
+        'APPItemContribution', back_populates='app_item', cascade='all, delete-orphan',
+        order_by='APPItemContribution.office_id, APPItemContribution.id', lazy='select',
+    )
 
     __table_args__ = (
         UniqueConstraint('app_id', 'source_ppmp_item_id', name='uq_app_item_source'),
@@ -1139,10 +1338,55 @@ class APPItem(db.Model):
             'procurement_end': self.month_label(self.procurement_end),
             'source_of_fund': self.source_of_fund,
             'estimated_budget': float(self.estimated_budget or 0),
+            'quantity': float(self.quantity or 0),
+            'unit_size': self.unit_size,
+            'merge_key': self.merge_key,
+            'contributions': [contribution.to_dict() for contribution in self.contributions],
             'procurement_strategy_tools': self.procurement_strategy_tools,
             'remarks': self.remarks, 'created_by': self.created_by,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class APPItemContribution(db.Model):
+    """Keep each office's source allocation when APP rows are merged or revised."""
+    __tablename__ = 'app_item_contributions'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    app_item_id = db.Column(db.Integer, db.ForeignKey('app_items.id', ondelete='CASCADE'), nullable=False)
+    source_ppmp_item_id = db.Column(
+        db.Integer, db.ForeignKey('ppmp_items.id', ondelete='RESTRICT'), nullable=False, unique=True,
+    )
+    office_id = db.Column(db.Integer, db.ForeignKey('colleges.id', ondelete='RESTRICT'), nullable=False)
+    original_quantity = db.Column(DECIMAL(12, 2), nullable=False)
+    original_budget = db.Column(DECIMAL(18, 2), nullable=False)
+    quantity = db.Column(DECIMAL(12, 2), nullable=False)
+    estimated_budget = db.Column(DECIMAL(18, 2), nullable=False)
+    source_snapshot = db.Column(JSON, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    app_item = db.relationship('APPItem', back_populates='contributions')
+    source_ppmp_item = db.relationship('PPMPItem', foreign_keys=[source_ppmp_item_id])
+    office = db.relationship('College')
+
+    __table_args__ = (
+        CheckConstraint('original_quantity >= 0 AND quantity >= 0', name='ck_app_contribution_quantities'),
+        CheckConstraint('original_budget >= 0 AND estimated_budget >= 0', name='ck_app_contribution_budgets'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'app_item_id': self.app_item_id,
+            'source_ppmp_item_id': self.source_ppmp_item_id, 'office_id': self.office_id,
+            'office_code': self.office.code if self.office else '',
+            'office_name': self.office.name if self.office else '',
+            'original_quantity': float(self.original_quantity or 0),
+            'original_budget': float(self.original_budget or 0),
+            'quantity': float(self.quantity or 0),
+            'estimated_budget': float(self.estimated_budget or 0),
+            'source_snapshot': self.source_snapshot or {},
         }
 
 
@@ -1154,6 +1398,8 @@ class APPApproval(db.Model):
     action = db.Column(db.String(20), nullable=False)
     performed_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     note = db.Column(Text, nullable=True)
+    reviewer_role = db.Column(db.String(64), nullable=True)
+    snapshot = db.Column(JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     app = db.relationship('AnnualProcurementPlan', back_populates='approvals')
@@ -1164,7 +1410,9 @@ class APPApproval(db.Model):
             'id': self.id, 'action': self.action, 'note': self.note,
             'performed_by': self.performed_by,
             'performed_by_name': self.performer.full_name if self.performer else 'System',
-            'performed_by_role': self.performer.role if self.performer else None,
+            'performed_by_role': self.reviewer_role or (self.performer.role if self.performer else None),
+            'reviewer_role': self.reviewer_role,
+            'snapshot': self.snapshot or {},
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

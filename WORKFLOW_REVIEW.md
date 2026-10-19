@@ -1,0 +1,50 @@
+# Revised PPMP and APP workflow
+
+Implemented and reviewed locally. The user authorized publishing this workflow and outstanding minor revisions to GitHub on October 19, 2026.
+
+## Official PPMP
+
+- Offices and Colleges select catalog or unlisted items and create their official draft.
+- Each office has one official PPMP per fiscal year, beginning in 2026.
+- The creator completes the twelve report columns, saves, and submits to Procurement.
+- Procurement reviews, then Admin approves. Approved PPMP data is locked.
+- A return requires a comment. The creator corrects the document and resubmits to the reviewer who returned it.
+- Previously saved records are retained. Admin explicitly designates which existing request is official when historical records overlap in a year.
+
+## Indicative copies
+
+- An approved official PPMP can generate an independent editable indicative copy.
+- Editing or deleting that copy never modifies the official PPMP or consolidated sources.
+- Copies retain the PPMP report layout and have separate saves, print preview, PDF, and Excel exports.
+
+## Consolidation
+
+- Only Admin creates batches and prepares APP drafts.
+- Batches draw from approved official PPMPs across Offices and Colleges in the same fiscal year.
+- Sources can enter consolidation once; later batches cannot duplicate them.
+- Items merge only when item/specifications, unit, fund source, procurement mode, full schedule, and fiscal year match.
+- Merged rows preserve each source, office, original quantity/budget, and revised APP contribution.
+- APP quantities and budgets must equal the sum of office contributions. Official source documents remain unchanged.
+
+## APP review
+
+Admin prepares and submits → BAC Chairman → Budget Office → EO → Final Admin approval.
+
+- Final Admin approval finalizes the APP.
+- A return requires a comment. Admin edits using office feedback and resubmits to the returning reviewer.
+- An additional batch joins an existing APP while it is being reviewed. Completed reviews are retained; new items proceed from the current review stage.
+- Missing APP-only fields on newly added rows must be completed before the current reviewer can approve.
+- Batches received after final approval create a supplemental APP linked to the annual APP.
+- History records batch additions, corrections, comments, review roles, and the exact item snapshot at each approval.
+- Final APPs support PDF, Excel, and print preview, including contribution details.
+
+## Local review
+
+Use the project virtual environment from `PPMP_System/ppmp`:
+
+```powershell
+..\.venv\Scripts\python.exe app.py --migrate-only
+..\.venv\Scripts\python.exe app.py
+```
+
+The migration is additive. Back up the configured database before applying it. Automated workflow checks use isolated test databases, separate from office records.

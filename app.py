@@ -48,6 +48,13 @@ from models import (
     WishlistRequest, WorkflowAuditLog,
     db, get_ppmp_items, get_summary,
 )
+from models import OfficialPPMP
+from workflow_migrations import apply_workflow_migrations, workflow_required_columns
+from ppmp_workflow import (
+    can_edit_official_ppmp, create_indicative_copy, indicative_report_payload,
+    register_ppmp_workflow_routes, create_copy_response, extended_report_changes,
+    validate_report_timeline, workflow_history, positive_decimal,
+)
 
 FUND_SOURCES = list(PPMPItem.FUND_SOURCES)
 MODES_OF_PROCUREMENT = list(PPMPItem.MODES)
@@ -90,8 +97,7 @@ PPMP_REPORT_PROCUREMENT_METHODS = (
     'Unsolicited Offer with Bid Matching',
 )
 PPMP_REPORT_PENDING_STATUSES = {
-    'Requested', 'Pending Admin Approval', 'Submitted',
-    'EO Review', 'Procurement Review', 'Returned',
+    'Draft', 'Returned',
 }
 PPMP_REPORT_COLUMNS = (
     'General Description and Objective of the Project to be Procured',
@@ -139,8 +145,8 @@ ROLE_PERMISSIONS = {
            'app.view', 'app.review', 'app.return', 'app.report', 'app.export'},
     'PROCUREMENT': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.record.review', 'ppmp.review',
                     'ppmp.return', 'ppmp.reject', 'ppmp.approve',
-                    'ppmp.comment', 'ppmp.consolidate', 'ppmp.report', 'ppmp.export',
-                    'app.view', 'app.create', 'app.edit', 'app.submit', 'app.review',
+                    'ppmp.comment', 'ppmp.report', 'ppmp.export',
+                    'app.view', 'app.review',
                     'app.return', 'app.reject', 'app.report', 'app.export', 'app.cse.view'},
     'BUDGET': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.review', 'ppmp.return', 'ppmp.comment', 'ppmp.report',
                'app.view', 'app.review', 'app.return', 'app.reject', 'app.report', 'app.export',
@@ -378,8 +384,9 @@ def require_authenticated_api_user():
     if request.method == "OPTIONS":
         return None
     public_api = {
-        '/api/auth/login', '/api/auth/logout', '/api/auth/me',
-        '/api/auth/registration-status',
+        '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/register',
+        '/api/auth/available-roles', '/api/auth/registration-status',
+        '/api/auth/forgot-password', '/api/auth/reset-password',
     }
     user_id = session.get('user_id')
     if user_id:
@@ -505,6 +512,8 @@ def verify_database_schema():
         'ppmp_comments': {'ppmp_record_id', 'ppmp_record_item_id', 'wishlist_order_id', 'comment_type'},
         'workflow_audit_log': {'ip_address'},
     }
+    for table_name, expected in workflow_required_columns.items():
+        required_columns.setdefault(table_name, set()).update(expected)
     missing_columns = []
     for table_name, expected in required_columns.items():
         actual = {column['name'] for column in inspector.get_columns(table_name)}
@@ -531,6 +540,7 @@ def initialize_database(apply_migrations=False):
                 db.metadata.create_all(bind=db.engine, tables=[
                     table for name, table in db.metadata.tables.items() if name not in retired_tables
                 ])
+                apply_workflow_migrations(db)
                 migrate_revision_schema()
                 ensure_admin_account()
                 verify_database_schema()
@@ -671,7 +681,7 @@ def migrate_revision_schema():
         db.session.execute(text("UPDATE users SET role = UPPER(role) WHERE role IS NOT NULL"))
         db.session.execute(text("ALTER TABLE ppmp_items MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'Draft'"))
         db.session.execute(text("ALTER TABLE ppmp_items MODIFY COLUMN fund_source VARCHAR(80) NOT NULL"))
-        db.session.execute(text("ALTER TABLE ppmp_items MODIFY COLUMN mode_of_procurement VARCHAR(120) NOT NULL"))
+        db.session.execute(text("ALTER TABLE ppmp_items MODIFY COLUMN mode_of_procurement VARCHAR(255) NOT NULL"))
         db.session.execute(text("ALTER TABLE ppmp_items MODIFY COLUMN procurement_type VARCHAR(80) NOT NULL DEFAULT 'Goods'"))
         db.session.execute(text("UPDATE ppmp_items SET status = 'Submitted' WHERE status = 'Pending'"))
         db.session.execute(text("UPDATE ppmp_items SET status = 'Rejected' WHERE status = 'Cancelled'"))
@@ -1027,7 +1037,6 @@ def login():
 
 
 @app.route("/api/auth/register", methods=["POST"])
-@admin_required
 def register():
     data = request.get_json(silent=True) or {}
     first_name = (data.get("first_name") or "").strip()
@@ -1085,7 +1094,7 @@ def register():
     audit('account', user.id, 'ROLE_RESERVED', {'role': role})
     db.session.commit()
     return jsonify({
-        'message': 'User account created and submitted for Administrator approval.',
+        'message': 'Your account has been submitted for Administrator approval.',
         'account_status': 'PENDING',
         'registration_token': create_registration_token(user),
     }), 201
@@ -1172,7 +1181,6 @@ def admin_activity_log_tracker():
 
 
 @app.route('/api/auth/available-roles')
-@admin_required
 def available_roles():
     occupied = {role for (role,) in db.session.query(User.role).filter(User.role.isnot(None)).all()}
     roles = [role for role in configured_roles() if role != 'ADMIN' and role not in occupied]
@@ -1224,7 +1232,6 @@ def password_reset_digest(code):
 
 
 @app.route('/api/auth/forgot-password', methods=['POST'])
-@admin_required
 def forgot_password():
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
@@ -1238,7 +1245,6 @@ def forgot_password():
 
 
 @app.route('/api/auth/reset-password', methods=['POST'])
-@admin_required
 def reset_password():
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
@@ -1291,13 +1297,8 @@ def reset_password():
     add_notification([user], 'Password changed', 'Your password was changed through the recovery process.', 'success')
     audit('password_reset', reset_request.id, 'COMPLETED', {'user_id': user.id})
     db.session.commit()
-    resetting_current_account = session.get('user_id') == user.id
-    if resetting_current_account:
-        session.clear()
-    return jsonify({
-        'message': 'Password updated. The account can now sign in using the new password.',
-        'session_invalidated': resetting_current_account,
-    })
+    session.clear()
+    return jsonify({'message': 'Password updated. You can now sign in using your new password.'})
 
 
 @app.route("/api/admin/pending-users")
@@ -1545,6 +1546,10 @@ def can_access_ppmp_record(user, record):
 
 
 def can_edit_ppmp_record(user, record):
+    if record.source_order_id:
+        return bool(user and (user.role == 'ADMIN' or (
+            user.college_id == record.office_id and record.prepared_by == user.id
+        )))
     return (
         is_ppmp_office_role(user.role)
         and user.college_id == record.office_id
@@ -1958,6 +1963,7 @@ def update_ppmp_record_item(record_id, item_id):
 @app.route('/api/ppmp-records/<int:record_id>/submit', methods=['POST'])
 @login_required
 def submit_ppmp_record(record_id):
+    return jsonify({'error': 'Planning documents are indicative copies. Submit the official PPMP from PPMP Request Records.'}), 409
     record = PPMPRecord.query.filter_by(id=record_id).with_for_update().one_or_none()
     user = current_session_user()
     if record is None:
@@ -1989,6 +1995,7 @@ def submit_ppmp_record(record_id):
 @app.route('/api/ppmp-records/<int:record_id>/transition', methods=['POST'])
 @login_required
 def transition_ppmp_record(record_id):
+    return jsonify({'error': 'Planning copies have no approval workflow. Review the official PPMP request instead.'}), 409
     record = PPMPRecord.query.filter_by(id=record_id).with_for_update().one_or_none()
     user = current_session_user()
     if record is None:
@@ -2399,8 +2406,10 @@ def ppmp_orders():
     if office is None or not office.is_active:
         return jsonify({'error': 'Your account must be linked to an active office before submitting a Wishlist request.'}), 409
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Provide a valid PPMP draft.'}), 400
     if 'wishlist_item_ids' in data:
-        return create_order_from_ppmp_wishlist(user, office, data)
+        return jsonify({'error': 'Create the official PPMP from Selected Items; planning copies cannot create another request.'}), 409
     requested_items = data.get('items')
     if not isinstance(requested_items, list) or not requested_items or len(requested_items) > 100:
         return jsonify({'error': 'Add between 1 and 100 items to the PPMP request.'}), 400
@@ -2409,10 +2418,15 @@ def ppmp_orders():
     except (TypeError, ValueError):
         return jsonify({'error': 'Fiscal year must be a valid year.'}), 400
     quarter = str(data.get('quarter') or '').strip()
-    if not 2000 <= fiscal_year <= 2100:
-        return jsonify({'error': 'Fiscal year must be between 2000 and 2100.'}), 400
+    if isinstance(data.get('fiscal_year'), bool) or (isinstance(data.get('fiscal_year'), float) and data['fiscal_year'] != fiscal_year) or not 2026 <= fiscal_year <= 2100:
+        return jsonify({'error': 'Fiscal year must be between 2026 and 2100.'}), 400
     if quarter not in QUARTERS:
         return jsonify({'error': 'Select a valid quarter.'}), 400
+
+    if OfficialPPMP.query.filter_by(office_id=office.id, fiscal_year=fiscal_year).first():
+        return jsonify({'error': 'Your office already has an official PPMP for this fiscal year. Open its existing record.'}), 409
+    if PPMPOrder.query.filter_by(office_id=office.id, fiscal_year=fiscal_year).filter(PPMPOrder.status != 'Rejected').first():
+        return jsonify({'error': 'Existing PPMP records already cover this office and fiscal year. Ask Admin to designate the official record before creating another.'}), 409
 
     master_ids = []
     for requested in requested_items:
@@ -2420,6 +2434,8 @@ def ppmp_orders():
             return jsonify({'error': 'Every request item must be a valid object.'}), 400
         master_id = requested.get('master_item_id')
         if master_id is not None:
+            if type(master_id) is not int or master_id <= 0:
+                return jsonify({'error': 'A selected CSE Master List item must have an integer identifier.'}), 400
             try:
                 master_ids.append(int(master_id))
             except (TypeError, ValueError):
@@ -2442,20 +2458,24 @@ def ppmp_orders():
         requested_by=user.id,
         fiscal_year=fiscal_year,
         quarter=quarter,
-        status='Submitted',
+        status='Draft',
+        workflow_official=True,
         submitted_at=now,
     )
     db.session.add(order)
-    db.session.flush()
+    try:
+        db.session.flush()
+        db.session.add(OfficialPPMP(office_id=office.id, fiscal_year=fiscal_year, source_order_id=order.id))
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Your office already has an official PPMP for this fiscal year. Refresh the list.'}), 409
     for requested in requested_items:
         try:
-            quantity = Decimal(str(requested.get('quantity')))
-        except (InvalidOperation, TypeError, ValueError):
+            quantity = positive_decimal(requested.get('quantity'), 'Quantity')
+        except ValueError as error:
             db.session.rollback()
-            return jsonify({'error': 'Every item quantity must be numeric.'}), 400
-        if quantity <= 0:
-            db.session.rollback()
-            return jsonify({'error': 'Every item quantity must be greater than zero.'}), 400
+            return jsonify({'error': str(error)}), 400
         master_id = requested.get('master_item_id')
         if master_id is not None:
             master = master_by_id[int(master_id)]
@@ -2471,10 +2491,10 @@ def ppmp_orders():
             category = str(requested.get('category') or '').strip()
             unit = str(requested.get('unit') or '').strip()
             try:
-                unit_cost = Decimal(str(requested.get('estimated_unit_cost')))
-            except (InvalidOperation, TypeError, ValueError):
+                unit_cost = positive_decimal(requested.get('estimated_unit_cost'), 'Estimated unit cost', allow_zero=True)
+            except ValueError as error:
                 db.session.rollback()
-                return jsonify({'error': 'Every unlisted item price must be numeric.'}), 400
+                return jsonify({'error': str(error)}), 400
             if not item_name or not category or not unit:
                 db.session.rollback()
                 return jsonify({'error': 'Name, category, and unit are required for every unlisted item.'}), 400
@@ -2489,6 +2509,9 @@ def ppmp_orders():
                 return jsonify({'error': 'An unlisted item price cannot be negative.'}), 400
             is_custom = True
         total = (quantity * unit_cost).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if total > Decimal('9999999999999999.99'):
+            db.session.rollback()
+            return jsonify({'error': 'The item budget exceeds the supported range.'}), 400
         db.session.add(PPMPOrderItem(
             order_id=order.id,
             master_item_id=None if is_custom else int(master_id),
@@ -2507,16 +2530,12 @@ def ppmp_orders():
     except IntegrityError:
         db.session.rollback()
         return jsonify({'error': 'The PPMP request could not be saved because an item conflicts with existing data.'}), 409
-    audit('wishlist_order', order.id, 'WISHLIST_REQUEST_CREATED', {
+    audit('ppmp_order', order.id, 'OFFICIAL_PPMP_DRAFT_CREATED', {
         'reference_number': order.reference_number,
         'master_item_ids': master_ids,
         'custom_item_count': sum(1 for item in order.items if item.is_custom_item),
         'status': order.status,
     })
-    notify_roles(
-        ('PROCUREMENT',), 'Wishlist request ready for APP consolidation',
-        f'{order.reference_number} from {office.code} requires APP / Procurement consolidation.',
-    )
     db.session.commit()
     return jsonify(order.to_dict()), 201
 
@@ -2540,15 +2559,21 @@ def transition_ppmp_order(order_id):
     if note and len(note) > 5000:
         return jsonify({'error': 'The review note must not exceed 5,000 characters.'}), 400
     actor = 'office' if is_ppmp_office_role(user.role) else ('EO' if user.role == 'AA' else user.role)
+    if actor == 'office' and order.requested_by != user.id:
+        return jsonify({'error': 'Only the creator can resubmit this PPMP.'}), 403
+    if action in {'submit', 'approve'} and not order.workflow_official:
+        return jsonify({'error': 'Admin must designate this historical record as the official PPMP before it can continue through review.'}), 409
+    resume_status = 'Pending Admin Approval' if order.return_stage == 'ADMIN' else 'Submitted'
     transitions = {
-        ('office', 'Returned', 'submit'): 'Submitted',
+        ('office', 'Draft', 'submit'): 'Submitted',
+        ('office', 'Returned', 'submit'): resume_status,
         ('ADMIN', 'Pending Admin Approval', 'approve'): 'Approved',
         ('ADMIN', 'Pending Admin Approval', 'return'): 'Returned',
         ('ADMIN', 'Pending Admin Approval', 'reject'): 'Rejected',
         ('PROCUREMENT', 'Submitted', 'approve'): 'Pending Admin Approval',
         ('PROCUREMENT', 'Submitted', 'return'): 'Returned',
         ('PROCUREMENT', 'Submitted', 'reject'): 'Rejected',
-        ('PROCUREMENT', 'EO Review', 'approve'): 'Procurement Review',
+        ('PROCUREMENT', 'EO Review', 'approve'): 'Pending Admin Approval',
         ('PROCUREMENT', 'EO Review', 'return'): 'Returned',
         ('PROCUREMENT', 'EO Review', 'reject'): 'Rejected',
         ('ADMIN', 'Procurement Review', 'approve'): 'Approved',
@@ -2560,16 +2585,19 @@ def transition_ppmp_order(order_id):
     target = transitions.get((actor, order.status, action))
     if target is None:
         return jsonify({'error': 'This Wishlist request transition is not allowed.'}), 409
-    requires_current_items_report = any(
-        item.master_item_id is not None or item.is_custom_item for item in order.items
-    )
-    if target == 'Approved' and requires_current_items_report and not ppmp_request_report_is_complete(order):
+    if action in {'submit', 'approve'} and not ppmp_request_report_is_complete(order):
         return jsonify({
-            'error': 'Complete PPMP Report Columns 2 and 4 through 9 before approval.'
+            'error': 'Complete PPMP Report Columns 2 and 4 through 9, with valid dates, before submitting or approving.'
         }), 409
 
     previous = order.status
     order.status = target
+    if action == 'return':
+        order.return_stage = actor
+    elif action == 'approve':
+        order.return_stage = None
+    if action == 'submit':
+        order.submitted_at = datetime.utcnow()
     if note:
         order.admin_note = note
     materialized = 0
@@ -2593,8 +2621,10 @@ def transition_ppmp_order(order_id):
         'process': 'WISHLIST_REQUEST_PROCESSING',
         'complete': 'WISHLIST_REQUEST_COMPLETED',
     }.get(action, f'WISHLIST_REQUEST_{action.upper()}')
-    audit('wishlist_order', order.id, audit_action, {
+    audit('ppmp_order', order.id, audit_action, {
         'from': previous, 'to': target, 'materialized_ppmp_items': materialized,
+        'return_stage': order.return_stage, 'reviewer_role': user.role,
+        'items': [ppmp_request_report_item(item, order) for item in order.items],
     })
     if target == 'Pending Admin Approval':
         notify_roles(
@@ -2603,8 +2633,8 @@ def transition_ppmp_order(order_id):
         )
     elif target == 'Submitted':
         notify_roles(
-            ('PROCUREMENT',), 'Wishlist request ready for APP consolidation',
-            f'{order.reference_number} requires APP / Procurement consolidation.',
+            ('PROCUREMENT',), 'Official PPMP ready for review',
+            f'{order.reference_number} requires Procurement review.',
         )
     elif target == 'EO Review':
         notify_roles(('PROCUREMENT',), 'PPMP request ready for Procurement review',
@@ -2767,13 +2797,14 @@ def scoped_ppmp_report_orders(user):
 
 
 def authorized_ppmp_request_report(user, order_id, *, require_pending=True):
-    order = db.session.get(PPMPOrder, order_id)
+    order = (PPMPOrder.query.filter_by(id=order_id).with_for_update().one_or_none()
+             if require_pending else db.session.get(PPMPOrder, order_id))
     if order is None:
         return None, (jsonify({'error': 'PPMP Request Record not found.'}), 404)
     if is_ppmp_office_role(user.role) and order.office_id != user.college_id:
         return None, (jsonify({'error': 'You cannot access another office PPMP Request Record.'}), 403)
-    if require_pending and order.status not in PPMP_REPORT_PENDING_STATUSES:
-        return None, (jsonify({'error': 'Only a Pending PPMP Request Record can be opened as this report.'}), 409)
+    if require_pending and not can_edit_official_ppmp(user, order):
+        return None, (jsonify({'error': 'Only the creator can edit their Draft or Returned PPMP. Submitted and approved records are locked.'}), 409)
     return order, None
 
 
@@ -2787,6 +2818,8 @@ def ppmp_request_report_item(item, order):
         'general_description': item.item_name,
         'project_type': item.project_type or '',
         'quantity_and_size': f'{float(item.quantity or 0):g} {item.unit}',
+        'quantity': float(item.quantity or 0),
+        'unit': item.unit,
         'procurement_method': item.procurement_method or '',
         'pre_procurement_conference': (
             'Yes' if item.pre_procurement_conference is True
@@ -2808,16 +2841,33 @@ def ppmp_request_report_item(item, order):
 def ppmp_request_report_payload(order, user):
     return {
         'id': order.id,
+        'source_type': 'official',
+        'reference_number': order.reference_number,
+        'status': order.status,
+        'return_stage': order.return_stage,
+        'workflow_official': bool(order.workflow_official),
+        'is_official': bool(order.workflow_official),
+        'requested_by': order.requested_by,
+        'office_id': order.office_id,
+        'may_provide_app_feedback': user.role == 'ADMIN' or (order.requested_by == user.id and order.office_id == user.college_id),
+        'may_create_indicative_copy': bool(order.workflow_official and order.status in {'Approved', 'Processing', 'Completed'} and (
+            user.role == 'ADMIN' or (order.requested_by == user.id and order.office_id == user.college_id))),
+        'save_url': f'/api/reports/ppmp-orders/{order.id}/items',
+        'submit_url': f'/api/ppmp-orders/{order.id}/transition',
+        'export_base': f'/api/reports/ppmp-orders/{order.id}/export',
         'fiscal_year': order.fiscal_year,
         'ppmp_document_number': order.ppmp_document_number,
         'end_user_or_implementing_unit': (
             order.office.name if order.office and order.office.name else order.office.code if order.office else ''
         ),
-        'editable': order.status in PPMP_REPORT_PENDING_STATUSES,
+        'editable': can_edit_official_ppmp(user, order),
         'procurement_types': PPMP_ORDER_TYPES,
         'procurement_methods': PPMP_REPORT_PROCUREMENT_METHODS,
         'fund_sources': PPMP_ORDER_FUND_SOURCES,
         'items': [ppmp_request_report_item(item, order) for item in order.items],
+        'history': workflow_history('ppmp_order', order.id),
+        'comments': [comment.to_dict() for comment in PPMPComment.query.filter_by(
+            wishlist_order_id=order.id).order_by(PPMPComment.id).all()],
     }
 
 
@@ -2830,6 +2880,8 @@ def ppmp_request_report_is_complete(order):
         and item.procurement_end is not None
         and item.delivery_period is not None
         and item.source_of_funds in PPMP_ORDER_FUND_SOURCES
+        and item.procurement_end >= item.procurement_start
+        and item.delivery_period >= item.procurement_end
         for item in order.items
     )
 
@@ -2901,17 +2953,19 @@ def update_ppmp_request_report_item(order_id, item_id):
     order, error = authorized_ppmp_request_report(user, order_id)
     if error:
         return error
-
     item = PPMPOrderItem.query.filter_by(id=item_id, order_id=order.id).one_or_none()
     if item is None:
         return jsonify({'error': 'Requested item not found in this PPMP Request Record.'}), 404
     data = request.get_json(silent=True)
     try:
-        changes = ppmp_request_report_item_changes(data)
+        changes = extended_report_changes(sys.modules[__name__], data)
+        validate_report_timeline(item, changes)
     except ValueError as error_value:
         return jsonify({'error': str(error_value)}), 400
     for field_name, value in changes.items():
-        setattr(item, field_name, value)
+        setattr(item, 'item_name' if field_name == 'general_description' else field_name, value)
+    if 'quantity' in changes or 'estimated_budget' in changes:
+        item.estimated_unit_cost = (Decimal(item.estimated_budget) / Decimal(item.quantity)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     audit('ppmp_order_item', item.id, 'REPORT_FIELDS_UPDATED', {
         'order_id': order.id, 'fields': sorted(changes),
     })
@@ -2926,7 +2980,6 @@ def update_ppmp_request_report_items(order_id):
     order, error = authorized_ppmp_request_report(user, order_id)
     if error:
         return error
-
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or set(data) - {'items', 'ppmp_document_number'} or 'items' not in data:
         return jsonify({'error': 'Provide report changes to save.'}), 400
@@ -2951,7 +3004,7 @@ def update_ppmp_request_report_items(order_id):
         if item_id in item_ids:
             return jsonify({'error': 'A report item can only be included once per save.'}), 400
         try:
-            changes = ppmp_request_report_item_changes(row['fields'])
+            changes = extended_report_changes(sys.modules[__name__], row['fields'])
         except ValueError as error_value:
             return jsonify({'error': str(error_value)}), 400
         item_ids.add(item_id)
@@ -2964,12 +3017,21 @@ def update_ppmp_request_report_items(order_id):
     }
     if set(items) != item_ids:
         return jsonify({'error': 'Requested item not found in this PPMP Request Record.'}), 404
+    try:
+        for item_id, changes in validated_rows:
+            validate_report_timeline(items[item_id], changes)
+    except ValueError as error_value:
+        return jsonify({'error': str(error_value)}), 400
     for item_id, changes in validated_rows:
         item = items[item_id]
+        before = ppmp_request_report_item(item, order)
         for field_name, value in changes.items():
-            setattr(item, field_name, value)
+            setattr(item, 'item_name' if field_name == 'general_description' else field_name, value)
+        if 'quantity' in changes or 'estimated_budget' in changes:
+            item.estimated_unit_cost = (Decimal(item.estimated_budget) / Decimal(item.quantity)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         audit('ppmp_order_item', item.id, 'REPORT_FIELDS_UPDATED', {
             'order_id': order.id, 'fields': sorted(changes),
+            'before': before, 'after': ppmp_request_report_item(item, order),
         })
     if document_number is not None and document_number != order.ppmp_document_number:
         previous_number = order.ppmp_document_number
@@ -3145,7 +3207,7 @@ def export_ppmp_order_report_excel():
 
 
 def selected_ppmp_request_export(order_id):
-    order, error = authorized_ppmp_request_report(current_session_user(), order_id)
+    order, error = authorized_ppmp_request_report(current_session_user(), order_id, require_pending=False)
     if error:
         return None, error
     if not ppmp_request_report_is_complete(order):
@@ -3174,10 +3236,12 @@ def selected_ppmp_request_rows(order):
 
 @app.route('/api/reports/ppmp-orders/<int:order_id>/export/pdf')
 @permission_required('ppmp.export')
-def export_selected_ppmp_request_pdf(order_id):
-    order, error = selected_ppmp_request_export(order_id)
-    if error:
-        return error
+def export_selected_ppmp_request_pdf(order_id=None, *, document=None, indicative=False):
+    order = document
+    if order is None:
+        order, error = selected_ppmp_request_export(order_id)
+        if error:
+            return error
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer, pagesize=landscape(A3), rightMargin=7 * mm, leftMargin=7 * mm,
@@ -3197,6 +3261,9 @@ def export_selected_ppmp_request_pdf(order_id):
     cell_style.fontSize = 5.2
     cell_style.leading = 6.2
     cell_style.wordWrap = 'CJK'
+    cell_style.alignment = 1
+    description_style = cell_style.clone('PPMPRequestDescription')
+    description_style.alignment = 0
     header_style = cell_style.clone('PPMPRequestHeader')
     header_style.fontName = 'Helvetica-Bold'
     header_style.alignment = 1
@@ -3216,6 +3283,7 @@ def export_selected_ppmp_request_pdf(order_id):
     office_name = order.office.name if order.office and order.office.name else order.office.code if order.office else ''
     story = [
         header, Spacer(1, 3 * mm),
+        Paragraph('INDICATIVE COPY' if indicative else 'OFFICIAL PPMP', body_style),
         Paragraph(f'<b>Fiscal Year:</b> {order.fiscal_year}', body_style),
         Paragraph(f'<b>End-User or Implementing Unit:</b> {xml_escape(office_name)}', body_style),
         Spacer(1, 3 * mm),
@@ -3224,7 +3292,11 @@ def export_selected_ppmp_request_pdf(order_id):
     for row in selected_ppmp_request_rows(order):
         display = list(row)
         display[9] = f'Php {row[9]:,.2f}'
-        report_rows.append([Paragraph(xml_escape(str(value)), cell_style) for value in display])
+        report_rows.append([Paragraph(xml_escape(str(value)), description_style if index == 0 else cell_style)
+                            for index, value in enumerate(display)])
+    total_budget = sum((Decimal(item.estimated_budget or 0) for item in order.items), Decimal('0.00'))
+    report_rows.append([''] * 8 + [Paragraph('<b>TOTAL BUDGET</b>', header_style),
+                                     Paragraph(f'<b>Php {total_budget:,.2f}</b>', header_style), '', ''])
     column_widths = [48, 39, 27, 48, 31, 25, 25, 31, 25, 34, 47, 42]
     report_table = Table(
         report_rows, repeatRows=1, colWidths=[value * mm for value in column_widths],
@@ -3244,7 +3316,7 @@ def export_selected_ppmp_request_pdf(order_id):
     story.append(report_table)
     document.build(story)
     buffer.seek(0)
-    audit('ppmp_order', order.id, 'EXPORT_12_COLUMN_PDF', {'item_count': len(order.items)})
+    audit('indicative_ppmp' if indicative else 'ppmp_order', order.id, 'EXPORT_12_COLUMN_PDF', {'item_count': len(order.items)})
     db.session.commit()
     return send_file(
         buffer, mimetype='application/pdf', as_attachment=True,
@@ -3254,10 +3326,12 @@ def export_selected_ppmp_request_pdf(order_id):
 
 @app.route('/api/reports/ppmp-orders/<int:order_id>/export/excel')
 @permission_required('ppmp.export')
-def export_selected_ppmp_request_excel(order_id):
-    order, error = selected_ppmp_request_export(order_id)
-    if error:
-        return error
+def export_selected_ppmp_request_excel(order_id=None, *, document=None, indicative=False):
+    order = document
+    if order is None:
+        order, error = selected_ppmp_request_export(order_id)
+        if error:
+            return error
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = 'PPMP Report'
@@ -3272,6 +3346,9 @@ def export_selected_ppmp_request_excel(order_id):
     sheet.append(list(PPMP_REPORT_COLUMNS))
     for row in selected_ppmp_request_rows(order):
         sheet.append(row)
+    total_budget = sum((Decimal(item.estimated_budget or 0) for item in order.items), Decimal('0.00'))
+    sheet.append([''] * 8 + ['TOTAL BUDGET', float(total_budget), '', ''])
+    sheet.cell(4, 1, 'INDICATIVE COPY' if indicative else 'OFFICIAL PPMP')
     for cell in sheet[5]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='D9EAF7')
@@ -3281,8 +3358,8 @@ def export_selected_ppmp_request_excel(order_id):
             top=Side(style='thin'), bottom=Side(style='thin'),
         )
     for row in sheet.iter_rows(min_row=6, max_col=12):
-        for cell in row:
-            cell.alignment = Alignment(vertical='top', wrap_text=True)
+        for index, cell in enumerate(row):
+            cell.alignment = Alignment(horizontal='left' if index == 0 else 'center', vertical='top', wrap_text=True)
             cell.border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin'),
@@ -3301,7 +3378,7 @@ def export_selected_ppmp_request_excel(order_id):
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
-    audit('ppmp_order', order.id, 'EXPORT_12_COLUMN_EXCEL', {'item_count': len(order.items)})
+    audit('indicative_ppmp' if indicative else 'ppmp_order', order.id, 'EXPORT_12_COLUMN_EXCEL', {'item_count': len(order.items)})
     db.session.commit()
     return send_file(
         buffer, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -3423,15 +3500,31 @@ def ppmp_dashboard_data():
     })
 
 
+from flask import has_request_context
+from models import APPBatchLink, APPItemContribution, APPWorkflowRegistry
+from procurement_workflow import (
+    APP_OPEN_STATUSES, APP_REVIEW_ROLES, INSTITUTION_OFFICE,
+    app_snapshot, apply_contribution_update, export_office_contributions,
+    export_project_title, materialize_batch_sources, precise_number,
+    prepare_contribution_update, source_snapshot, validate_row_allocations,
+)
+
+
 def can_access_app(user, plan):
     return bool(user and has_permission(user, 'app.view'))
 
 
 def can_edit_app(user, plan):
     return bool(
-        user and user.role == 'PROCUREMENT' and has_permission(user, 'app.edit')
-        and plan.created_by == user.id and plan.status in {'Draft', 'Returned'}
+        user and user.role == 'ADMIN' and has_permission(user, 'app.edit')
+        and plan.status in {'Draft', 'Returned'}
     )
+
+
+def can_complete_added_app_item(user, plan, item):
+    return bool(user and user.role == 'ADMIN'
+                and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}
+                and item.id in (plan.source_details or {}).get('pending_item_ids', []))
 
 
 def parse_app_item(data):
@@ -3439,7 +3532,7 @@ def parse_app_item(data):
         'project_title': (3000, True),
         'implementing_unit': (200, True),
         'general_description': (120, True),
-        'mode_of_procurement': (180, True),
+        'mode_of_procurement': (255, True),
         'bid_evaluation_criteria': (3000, False),
         'source_of_fund': (120, True),
         'procurement_strategy_tools': (5000, False),
@@ -3453,11 +3546,11 @@ def parse_app_item(data):
         if len(value) > limit:
             raise ValueError(f'{field.replace("_", " ").title()} must not exceed {limit:,} characters.')
         values[field] = value or None
-    if values['general_description'] not in PPMPRecordItem.PROJECT_TYPES:
+    if values['general_description'] not in set(PPMPRecordItem.PROJECT_TYPES) | set(PPMP_ORDER_TYPES) | set(PPMPItem.TYPES):
         raise ValueError('Select a valid general project description.')
-    if values['mode_of_procurement'] not in APP_MODES_OF_PROCUREMENT:
+    if values['mode_of_procurement'] not in set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS):
         raise ValueError('Select a valid mode of procurement.')
-    if values['source_of_fund'] not in PPMPRecordItem.FUND_SOURCES:
+    if values['source_of_fund'] not in set(PPMPRecordItem.FUND_SOURCES) | set(PPMP_ORDER_FUND_SOURCES):
         raise ValueError('Select a valid source of fund.')
     early_value = data.get('early_procurement_activity')
     values['early_procurement_activity'] = (
@@ -3470,15 +3563,30 @@ def parse_app_item(data):
     if (values['procurement_start'] and values['procurement_end']
             and values['procurement_end'] < values['procurement_start']):
         raise ValueError('Procurement end cannot be earlier than procurement start.')
-    try:
-        values['estimated_budget'] = Decimal(str(data.get('estimated_budget'))).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP,
-        )
-    except (InvalidOperation, TypeError, ValueError):
-        raise ValueError('Estimated/approved budget must be a valid number.')
-    if values['estimated_budget'] < 0:
-        raise ValueError('Estimated/approved budget cannot be negative.')
+    values['estimated_budget'] = precise_number(data.get('estimated_budget'), 'Estimated/approved budget', money=True)
     return values
+
+
+def app_item_validation_error(item, index=1):
+    if (not item.project_title or not item.implementing_unit
+                or item.general_description not in set(PPMPRecordItem.PROJECT_TYPES) | set(PPMP_ORDER_TYPES) | set(PPMPItem.TYPES)
+                or item.mode_of_procurement not in set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS)
+                or item.early_procurement_activity is None
+                or not item.bid_evaluation_criteria
+                or item.source_of_fund not in set(PPMPRecordItem.FUND_SOURCES) | set(PPMP_ORDER_FUND_SOURCES)
+                or Decimal(item.estimated_budget or 0) < 0):
+        return f'APP row {index} is incomplete or contains an invalid controlled value.'
+    as_needed = bool(item.contributions) and all(
+        contribution.source_snapshot.get('schedule_as_needed') for contribution in item.contributions)
+    if (not item.procurement_start or not item.procurement_end) and not as_needed:
+        return f'APP row {index} requires procurement start and end months.'
+    if item.procurement_start and item.procurement_end and item.procurement_end < item.procurement_start:
+        return f'APP row {index} contains an invalid procurement timeline.'
+    try:
+        validate_row_allocations(item)
+    except ValueError as error:
+        return f'APP row {index}: {error}'
+    return None
 
 
 def validate_app_for_submission(plan):
@@ -3487,53 +3595,44 @@ def validate_app_for_submission(plan):
     if not plan.items:
         return 'Add at least one APP item before submitting.'
     for index, item in enumerate(plan.items, 1):
-        if (not item.project_title or not item.implementing_unit
-                or item.general_description not in PPMPRecordItem.PROJECT_TYPES
-                or item.mode_of_procurement not in APP_MODES_OF_PROCUREMENT
-                or item.early_procurement_activity is None
-                or not item.bid_evaluation_criteria
-                or item.source_of_fund not in PPMPRecordItem.FUND_SOURCES
-                or Decimal(item.estimated_budget or 0) < 0):
-            return f'APP row {index} is incomplete or contains an invalid controlled value.'
-        if not item.procurement_start or not item.procurement_end:
-            return f'APP row {index} requires procurement start and end months.'
-        if item.procurement_end < item.procurement_start:
-            return f'APP row {index} contains an invalid procurement timeline.'
+        error = app_item_validation_error(item, index)
+        if error:
+            return error
     return None
 
 
 def materialize_app_items(plan, batch_sources, creator):
-    """Copy only legitimate consolidated PPMP values; leave unmapped APP fields empty for completion."""
-    section_name = 'Common Use Supplies and Equipment (CSE)' if plan.plan_type == 'APP_CSE' else 'General Requirements'
-    section = APPSection(app_id=plan.id, name=section_name, sort_order=10, created_by=creator.id)
-    db.session.add(section)
+    return materialize_batch_sources(plan, batch_sources, creator)
+
+
+def app_audit_snapshot(plan, action, details=None):
     db.session.flush()
-    for source in batch_sources:
-        ppmp_item = source.ppmp_item
-        record_item = PPMPRecordItem.query.filter_by(ppmp_item_id=ppmp_item.id).first()
-        db.session.add(APPItem(
-            app_id=plan.id,
-            section_id=section.id,
-            source_ppmp_item_id=ppmp_item.id,
-            project_title=ppmp_item.item_description,
-            implementing_unit=(ppmp_item.college.name if ppmp_item.college else plan.office),
-            general_description=ppmp_item.procurement_type,
-            mode_of_procurement=ppmp_item.mode_of_procurement,
-            early_procurement_activity=None,
-            bid_evaluation_criteria=None,
-            procurement_start=record_item.procurement_start if record_item else None,
-            procurement_end=record_item.procurement_end if record_item else None,
-            source_of_fund=ppmp_item.fund_source,
-            estimated_budget=Decimal(str(ppmp_item.total_cost)).quantize(Decimal('0.01')),
-            procurement_strategy_tools=None,
-            remarks=ppmp_item.remarks,
-            created_by=creator.id,
-        ))
+    payload = dict(details or {})
+    payload.update({'revision': plan.revision, 'snapshot': app_snapshot(plan)})
+    audit('app', plan.id, action, payload)
+
+
+def app_history_dict(plan):
+    entries = WorkflowAuditLog.query.filter_by(entity_type='app', entity_id=plan.id).order_by(WorkflowAuditLog.id).all()
+    return [{
+        'id': row.id, 'action': row.action, 'details': row.details or {},
+        'revision': (row.details or {}).get('revision'),
+        'snapshot': (row.details or {}).get('snapshot'),
+        'performed_by_name': row.performer.full_name if row.performer else 'System',
+        'performed_by_role': row.performer.role if row.performer else None,
+        'created_at': row.created_at.isoformat() if row.created_at else None,
+    } for row in entries]
 
 
 def app_detail_dict(plan):
     result = plan.to_dict(include_details=True)
     result['expected_reviewer'] = expected_app_reviewer(plan)
+    result['can_edit'] = can_edit_app(current_session_user(), plan) if has_request_context() else False
+    result['audit_history'] = app_history_dict(plan)
+    result['review_sequence'] = list(APP_REVIEW_ROLES)
+    batch_ids = [link.batch_id for link in plan.batch_links]
+    if not batch_ids and plan.consolidation_batch_id is not None:
+        batch_ids = [plan.consolidation_batch_id]
     result['source'] = {
         'source_type': plan.source_type,
         'source_details': plan.source_details or {},
@@ -3541,21 +3640,40 @@ def app_detail_dict(plan):
         'app_cycle': plan.consolidation_batch.app_cycle if plan.consolidation_batch else None,
         'fiscal_year': plan.consolidation_batch.fiscal_year if plan.consolidation_batch else None,
         'consolidated_item_count': (
-            ConsolidationSource.query.filter_by(batch_id=plan.consolidation_batch_id).count()
-            if plan.consolidation_batch_id is not None else 0
+            ConsolidationSource.query.filter(ConsolidationSource.batch_id.in_(batch_ids)).count()
+            if batch_ids else 0
         ),
+        'batch_ids': batch_ids,
     }
+    for section in result.get('sections', []):
+        for row in section.get('items', []):
+            row['schedule_as_needed'] = bool(row.get('contributions')) and all(
+                entry['source_snapshot'].get('schedule_as_needed') for entry in row['contributions']
+            )
+            row['is_pending_completion'] = row['id'] in (plan.source_details or {}).get('pending_item_ids', [])
+            row['can_edit'] = result['can_edit'] or bool(
+                has_request_context() and current_session_user() and current_session_user().role == 'ADMIN'
+                and row['is_pending_completion'] and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'})
     return result
 
 
 def expected_app_reviewer(plan):
     if plan.status in {'Approved', 'Finalized', 'Rejected', 'Imported'}:
         return None
+    if plan.current_review_role in APP_REVIEW_ROLES:
+        return plan.current_review_role
+    if plan.status == 'Returned' and plan.return_review_role in APP_REVIEW_ROLES:
+        return plan.return_review_role
     history = APPApproval.query.filter_by(app_id=plan.id).order_by(APPApproval.id).all()
-    last_submit = max((index for index, row in enumerate(history) if row.action == 'SUBMIT'), default=-1)
-    approvals = [row for row in history[last_submit + 1:] if row.action == 'APPROVE']
-    approved_roles = [approval.performer.role for approval in approvals if approval.performer]
-    return next((role for role in ('BAC CHAIRMAN', 'EO', 'BUDGET') if role not in approved_roles), 'ADMIN')
+    if plan.status == 'Returned':
+        returned = next((row for row in reversed(history) if row.action == 'RETURN'), None)
+        if returned:
+            return returned.reviewer_role or (returned.performer.role if returned.performer else 'BAC CHAIRMAN')
+    approved_roles = {
+        approval.reviewer_role or approval.performer.role
+        for approval in history if approval.action == 'APPROVE' and (approval.reviewer_role or approval.performer)
+    }
+    return next((role for role in APP_REVIEW_ROLES if role not in approved_roles), 'ADMIN')
 
 
 @app.route('/api/dashboard/app')
@@ -3568,7 +3686,7 @@ def app_dashboard_data():
         status_counts[plan.status] = status_counts.get(plan.status, 0) + 1
     pending_actions = 0
     for plan in plans:
-        if user.role == 'PROCUREMENT' and plan.status in {'Draft', 'Returned'} and plan.created_by == user.id:
+        if user.role == 'ADMIN' and plan.status in {'Draft', 'Returned'}:
             pending_actions += 1
         elif plan.status == 'Under Review' and expected_app_reviewer(plan) == user.role:
             pending_actions += 1
@@ -3587,7 +3705,7 @@ def app_dashboard_data():
 
 
 @app.route("/api/consolidated")
-@permission_required('ppmp.consolidate')
+@roles_required('ADMIN')
 def consolidated():
     result = []
     for college in College.query.filter_by(is_active=True).order_by(College.code):
@@ -3602,50 +3720,117 @@ def consolidated():
     return jsonify(result)
 
 
+def consolidation_item_dict(item):
+    result = item.to_dict()
+    result.update(source_snapshot(item))
+    # Keep ordinary API numbers while the saved source snapshot uses exact decimals.
+    result['quantity'] = float(item.quantity or 0)
+    result['estimated_budget'] = float(Decimal(result['estimated_budget']))
+    result['consolidation_batch_id'] = None
+    return result
+
+
+def consolidation_batch_dict(batch):
+    sources = ConsolidationSource.query.filter_by(batch_id=batch.id).order_by(ConsolidationSource.id).all()
+    link = APPBatchLink.query.filter_by(batch_id=batch.id).first()
+    plan = link.app if link else AnnualProcurementPlan.query.filter_by(consolidation_batch_id=batch.id).first()
+    return {
+        'id': batch.id, 'fiscal_year': batch.fiscal_year, 'app_cycle': batch.app_cycle,
+        'created_at': batch.created_at.isoformat() if batch.created_at else None,
+        'item_count': len(sources), 'source_ppmp_item_ids': [source.ppmp_item_id for source in sources],
+        'offices': sorted({source.ppmp_item.college.code for source in sources if source.ppmp_item.college}),
+        'sources': [consolidation_item_dict(source.ppmp_item) for source in sources],
+        'app_id': plan.id if plan else None, 'app_status': plan.status if plan else None,
+        'app_revision': plan.revision if plan else None,
+    }
+
+
+@app.route('/api/consolidation-eligible')
+@roles_required('ADMIN')
+def consolidation_eligible():
+    fiscal_year = request.args.get('fiscal_year', type=int)
+    if request.args.get('fiscal_year') and fiscal_year is None:
+        return jsonify({'error': 'Fiscal year must be an integer.'}), 400
+    consolidated_ids = db.session.query(ConsolidationSource.ppmp_item_id)
+    query = PPMPItem.query.filter(PPMPItem.status == 'Approved', ~PPMPItem.id.in_(consolidated_ids))
+    approved_items = query.all()
+    years = sorted({
+        item.fiscal_year for item in approved_items
+        if PPMPOrderItem.query.join(PPMPOrder).filter(
+            PPMPOrderItem.ppmp_item_id == item.id,
+            PPMPOrder.workflow_official.is_(True), PPMPOrder.status == 'Approved',
+        ).first()
+    })
+    if fiscal_year is not None:
+        query = query.filter_by(fiscal_year=fiscal_year)
+    items, errors = [], []
+    for item in query.order_by(PPMPItem.fiscal_year, PPMPItem.college_id, PPMPItem.id).all():
+        source = PPMPOrderItem.query.filter_by(ppmp_item_id=item.id).first()
+        if not source or not source.order.workflow_official or source.order.status != 'Approved':
+            continue
+        try:
+            items.append(consolidation_item_dict(item))
+        except ValueError as error:
+            errors.append({'ppmp_item_id': item.id, 'error': str(error)})
+    return jsonify({'items': items, 'fiscal_years': years, 'invalid_sources': errors})
+
+
 @app.route("/api/consolidation-batches", methods=["GET", "POST"])
-@permission_required('ppmp.consolidate')
+@roles_required('ADMIN')
 def consolidation_batches():
     if request.method == "GET":
         batches = ConsolidationBatch.query.order_by(ConsolidationBatch.created_at.desc()).all()
-        return jsonify([{"id": batch.id, "fiscal_year": batch.fiscal_year, "created_at": batch.created_at.isoformat(),
-                         "item_count": ConsolidationSource.query.filter_by(batch_id=batch.id).count()} for batch in batches])
+        return jsonify([consolidation_batch_dict(batch) for batch in batches])
     data = request.get_json(silent=True) or {}
-    fiscal_year = data.get("fiscal_year", datetime.utcnow().year)
+    fiscal_year = data.get('fiscal_year')
     item_ids = data.get("ppmp_item_ids") or []
-    app_cycle = (data.get('app_cycle') or 'ANNUAL').strip().upper()
-    if not isinstance(fiscal_year, int) or not isinstance(item_ids, list) or not item_ids:
-        return jsonify({"error": "A fiscal year and at least one PPMP item are required."}), 400
-    item_ids = list({value for value in item_ids if isinstance(value, int)})
-    items = PPMPItem.query.filter(PPMPItem.id.in_(item_ids), PPMPItem.status == "Approved").all()
+    order_ids = data.get('ppmp_order_ids') or []
+    if (type(fiscal_year) is not int or not 2026 <= fiscal_year <= 9999
+            or not isinstance(item_ids, list) or not isinstance(order_ids, list)
+            or any(type(value) is not int for value in item_ids + order_ids)
+            or not (item_ids or order_ids)):
+        return jsonify({'error': 'Select a fiscal year from 2026 onward and at least one approved PPMP source.'}), 400
+    if order_ids:
+        orders = PPMPOrder.query.filter(PPMPOrder.id.in_(set(order_ids))).order_by(PPMPOrder.id).with_for_update().all()
+        if len(orders) != len(set(order_ids)) or any(
+            not order.workflow_official or order.status != 'Approved' or order.fiscal_year != fiscal_year
+            or not order.items or any(row.ppmp_item_id is None for row in order.items)
+            for order in orders
+        ):
+            return jsonify({'error': 'Select only final approved official PPMPs from this fiscal year.'}), 409
+        item_ids += [row.ppmp_item_id for order in orders for row in order.items]
+    item_ids = sorted(set(item_ids))
+    items = PPMPItem.query.filter(PPMPItem.id.in_(item_ids)).order_by(PPMPItem.id).with_for_update().all()
     if len(items) != len(item_ids):
-        return jsonify({"error": "Only approved PPMP items can be consolidated."}), 409
+        return jsonify({'error': 'One or more PPMP source items no longer exist.'}), 409
+    if any(item.status != 'Approved' or item.fiscal_year != fiscal_year for item in items):
+        return jsonify({'error': 'Every selected PPMP item must be approved and match the batch fiscal year.'}), 409
+    try:
+        for item in items:
+            source_snapshot(item)
+            source = PPMPOrderItem.query.filter_by(ppmp_item_id=item.id).first()
+            if not source or not source.order.workflow_official or source.order.status != 'Approved':
+                raise ValueError('Every source must belong to a designated, finally approved official PPMP.')
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
     existing = {source.ppmp_item_id for source in ConsolidationSource.query.filter(ConsolidationSource.ppmp_item_id.in_(item_ids)).all()}
     if existing:
         return jsonify({"error": "One or more PPMP items have already been consolidated.", "item_ids": sorted(existing)}), 409
-    if ConsolidationBatch.query.filter_by(fiscal_year=fiscal_year, app_cycle=app_cycle).first():
-        return jsonify({'error': 'A consolidation batch already exists for this fiscal year and APP cycle.'}), 409
-    batch = ConsolidationBatch(fiscal_year=fiscal_year, app_cycle=app_cycle, created_by=current_session_user().id)
+    batch = ConsolidationBatch(fiscal_year=fiscal_year, app_cycle=f'BATCH-{secrets.token_hex(12).upper()}', created_by=current_session_user().id)
     db.session.add(batch)
-    db.session.flush()
-    for item in items:
-        db.session.add(ConsolidationSource(batch_id=batch.id, ppmp_item_id=item.id))
-    db.session.flush()
-    affected_records = PPMPRecord.query.join(PPMPRecordItem).filter(
-        PPMPRecordItem.ppmp_item_id.in_(item_ids)
-    ).distinct().all()
-    all_consolidated_ids = {
-        source.ppmp_item_id for source in ConsolidationSource.query.all()
-    }
-    for record in affected_records:
-        record_item_ids = {
-            item.ppmp_item_id for item in record.included_items if item.ppmp_item_id is not None
-        }
-        if record.status == 'Approved' and record_item_ids and record_item_ids.issubset(all_consolidated_ids):
-            record.status = 'Consolidated'
-            audit('ppmp_record', record.id, 'PPMP_CONSOLIDATED', {'batch_id': batch.id})
-    audit("consolidation_batch", batch.id, "CREATE", {"ppmp_item_ids": item_ids})
-    db.session.commit()
-    return jsonify({"id": batch.id, "fiscal_year": batch.fiscal_year, "item_count": len(items)}), 201
+    try:
+        db.session.flush()
+        for item in items:
+            db.session.add(ConsolidationSource(batch_id=batch.id, ppmp_item_id=item.id))
+        db.session.flush()
+        audit('consolidation_batch', batch.id, 'CREATE', {
+            'ppmp_item_ids': item_ids, 'sources': [source_snapshot(item) for item in items],
+        })
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'These PPMP sources were consolidated concurrently. Refresh the eligible list.'}), 409
+    return jsonify(consolidation_batch_dict(batch)), 201
 
 
 @app.route("/api/apps", methods=["GET", "POST"])
@@ -3660,56 +3845,86 @@ def annual_procurement_plans():
             record['expected_reviewer'] = expected_app_reviewer(plan)
             records.append(record)
         return jsonify(records)
-    if user.role != 'PROCUREMENT' or not has_permission(user, 'app.create'):
-        return jsonify({"error": "Only the Procurement account can create APP drafts from consolidation."}), 403
+    if user is None or user.role != 'ADMIN':
+        return jsonify({'error': 'Only Admin may create or extend consolidated APP drafts.'}), 403
     data = request.get_json(silent=True) or {}
-    office = (data.get("office") or "").strip()
-    plan_type = data.get("plan_type", "APP")
-    fiscal_year = data.get("fiscal_year", datetime.utcnow().year)
-    batch_id = data.get('consolidation_batch_id')
-    batch = db.session.get(ConsolidationBatch, batch_id) if isinstance(batch_id, int) else None
-    if office not in configured_offices() or plan_type not in AnnualProcurementPlan.TYPES or not isinstance(fiscal_year, int):
-        return jsonify({"error": "A valid office, APP type, and fiscal year are required."}), 400
-    batch_sources = []
-    if batch is not None:
-        batch_sources = (
-            ConsolidationSource.query.join(PPMPItem).join(College)
-            .filter(ConsolidationSource.batch_id == batch.id, College.code == office)
-            .order_by(ConsolidationSource.id).all()
-        )
-    if batch is None or batch.fiscal_year != fiscal_year or not batch_sources:
-        return jsonify({
-            'error': 'APP creation requires a same-year consolidation batch containing approved PPMP items for the selected office.'
-        }), 400
-    if AnnualProcurementPlan.query.filter_by(office=office, fiscal_year=fiscal_year, plan_type=plan_type).first():
-        return jsonify({"error": "An APP of this type already exists for the selected office and fiscal year."}), 409
-    plan = AnnualProcurementPlan(office=office, fiscal_year=fiscal_year, plan_type=plan_type,
-                                 consolidation_batch_id=batch.id, source_type='CONSOLIDATION',
-                                 created_by=user.id,
-                                 remarks=(data.get("remarks") or "").strip() or None)
-    db.session.add(plan)
+    batch_id = data.get('batch_id', data.get('consolidation_batch_id'))
+    batch = ConsolidationBatch.query.filter_by(id=batch_id).with_for_update().first() if type(batch_id) is int else None
+    if batch is None or data.get('plan_type', 'APP') != 'APP':
+        return jsonify({'error': 'Select a valid consolidation batch for the institution-wide APP.'}), 400
+    if data.get('fiscal_year', batch.fiscal_year) != batch.fiscal_year:
+        return jsonify({'error': 'APP and consolidation fiscal years must match.'}), 400
+    if APPBatchLink.query.filter_by(batch_id=batch.id).first() or AnnualProcurementPlan.query.filter_by(consolidation_batch_id=batch.id).first():
+        return jsonify({'error': 'This batch has already been attached to an APP.'}), 409
+    batch_sources = ConsolidationSource.query.filter_by(batch_id=batch.id).order_by(ConsolidationSource.id).all()
+    if not batch_sources:
+        return jsonify({'error': 'The selected consolidation batch contains no approved source items.'}), 400
+    source_ids = [source.ppmp_item_id for source in batch_sources]
+    PPMPItem.query.filter(PPMPItem.id.in_(source_ids)).order_by(PPMPItem.id).with_for_update().all()
+    if APPItemContribution.query.filter(APPItemContribution.source_ppmp_item_id.in_(source_ids)).first():
+        return jsonify({'error': 'This batch contains a source already included in an APP.'}), 409
+    plan = (AnnualProcurementPlan.query.filter(
+        AnnualProcurementPlan.workflow_version == 2,
+        AnnualProcurementPlan.fiscal_year == batch.fiscal_year,
+        AnnualProcurementPlan.status.in_(APP_OPEN_STATUSES),
+    ).order_by(AnnualProcurementPlan.id.desc()).with_for_update().first())
+    extending = plan is not None
     try:
+        if plan is None:
+            registries = APPWorkflowRegistry.query.filter_by(fiscal_year=batch.fiscal_year).order_by(APPWorkflowRegistry.sequence).with_for_update().all()
+            sequence = max((registry.sequence for registry in registries), default=-1) + 1
+            annual = next((registry.app for registry in registries if registry.sequence == 0), None)
+            if sequence and (annual is None or annual.status not in {'Approved', 'Finalized'}):
+                return jsonify({'error': 'The annual APP must be finally approved before creating a supplemental APP.'}), 409
+            plan = AnnualProcurementPlan(
+                office=INSTITUTION_OFFICE if not sequence else f'{INSTITUTION_OFFICE} - SUPPLEMENTAL #{sequence}',
+                fiscal_year=batch.fiscal_year, plan_type='APP', workflow_version=2,
+                consolidation_batch_id=batch.id, source_type='CONSOLIDATION', revision=1,
+                supplemental_parent_id=annual.id if sequence else None,
+                source_details={'institution_wide': True, 'supplemental_number': sequence},
+                created_by=user.id, remarks=str(data.get('remarks') or '').strip() or None,
+            )
+            db.session.add(plan)
+            db.session.flush()
+            db.session.add(APPWorkflowRegistry(app_id=plan.id, fiscal_year=batch.fiscal_year, sequence=sequence))
+        else:
+            plan.revision = (plan.revision or 1) + 1
+        db.session.add(APPBatchLink(app=plan, batch_id=batch.id, added_by=user.id))
         db.session.flush()
-        materialize_app_items(plan, batch_sources, user)
-        audit('app', plan.id, 'APP_DRAFT_CREATED', {
+        previous_item_ids = {item.id for item in plan.items}
+        snapshots = materialize_app_items(plan, batch_sources, user)
+        if extending and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}:
+            pending = set((plan.source_details or {}).get('pending_item_ids', []))
+            pending.update(item.id for item in plan.items if item.id not in previous_item_ids and app_item_validation_error(item))
+            plan.source_details = {**(plan.source_details or {}), 'pending_item_ids': sorted(pending)}
+        app_audit_snapshot(plan, 'APP_BATCH_ADDED' if extending else 'APP_DRAFT_CREATED', {
             'consolidation_batch_id': batch.id,
-            'source_ppmp_item_ids': [source.ppmp_item_id for source in batch_sources],
+            'source_ppmp_item_ids': source_ids, 'added_sources': snapshots,
+            'continuing_reviewer': expected_app_reviewer(plan) if extending else None,
+            'note': str(data.get('note') or '').strip() or None,
         })
+        if extending and plan.status in {'Under Review', 'For Admin Approval', 'Submitted'}:
+            notify_roles((expected_app_reviewer(plan),), 'APP batch added during review',
+                         f'APP FY {plan.fiscal_year} revision {plan.revision} includes new source items. Completed reviews remain recorded.')
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        return jsonify({'error': 'An APP draft already exists for this office, fiscal year, and type.'}), 409
-    return jsonify(app_detail_dict(plan)), 201
+        return jsonify({'error': 'Another action attached this batch or created this fiscal-year APP. Refresh and try again.'}), 409
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({'error': str(error)}), 400
+    return jsonify(app_detail_dict(plan)), 200 if extending else 201
 
 
 @app.route('/api/apps/metadata')
 @permission_required('app.view')
 def app_metadata():
     return jsonify({
-        'modes_of_procurement': list(APP_MODES_OF_PROCUREMENT),
+        'modes_of_procurement': list(dict.fromkeys((*APP_MODES_OF_PROCUREMENT, *PPMP_REPORT_PROCUREMENT_METHODS))),
         'early_procurement_options': ('Yes', 'No'),
-        'sources_of_fund': list(PPMPRecordItem.FUND_SOURCES),
-        'general_descriptions': list(PPMPRecordItem.PROJECT_TYPES),
+        'sources_of_fund': list(dict.fromkeys((*PPMPRecordItem.FUND_SOURCES, *PPMP_ORDER_FUND_SOURCES))),
+        'general_descriptions': list(dict.fromkeys((*PPMPRecordItem.PROJECT_TYPES, *PPMP_ORDER_TYPES, *PPMPItem.TYPES))),
+        'review_sequence': list(APP_REVIEW_ROLES),
         'suggested_sections': (
             'General Requirements',
             'Miscellaneous Items (for Direct Acquisition only) Sec 32.2 of RA No. 12009',
@@ -3730,6 +3945,15 @@ def app_detail(app_id):
     return jsonify(app_detail_dict(plan))
 
 
+@app.route('/api/apps/<int:app_id>/history')
+@permission_required('app.view')
+def app_history(app_id):
+    plan = db.session.get(AnnualProcurementPlan, app_id)
+    if plan is None:
+        return jsonify({'error': 'APP record not found.'}), 404
+    return jsonify({'audit_history': app_history_dict(plan), 'approval_history': [row.to_dict() for row in plan.approvals]})
+
+
 @app.route('/api/apps/<int:app_id>/sections', methods=['POST'])
 @permission_required('app.edit')
 def create_app_section(app_id):
@@ -3737,7 +3961,7 @@ def create_app_section(app_id):
     if plan is None:
         return jsonify({'error': 'APP record not found.'}), 404
     if not can_edit_app(user, plan):
-        return jsonify({'error': 'Only the preparing Procurement account may edit this draft.'}), 403
+        return jsonify({'error': 'Only Admin may edit an APP while Draft or Returned.'}), 403
     data = request.get_json(silent=True) or {}
     name = str(data.get('name') or '').strip()
     if not name or len(name) > 180:
@@ -3750,7 +3974,9 @@ def create_app_section(app_id):
     except IntegrityError:
         db.session.rollback()
         return jsonify({'error': 'This APP already contains a section with that name.'}), 409
-    audit('app', plan.id, 'APP_SECTION_ADDED', {'section_id': section.id, 'name': name})
+    plan.revision = (plan.revision or 1) + 1
+    db.session.expire(plan, ['sections'])
+    app_audit_snapshot(plan, 'APP_SECTION_ADDED', {'section_id': section.id, 'name': name})
     db.session.commit()
     return jsonify(section.to_dict()), 201
 
@@ -3763,11 +3989,15 @@ def delete_app_section(app_id, section_id):
     if plan is None or section is None:
         return jsonify({'error': 'APP section not found.'}), 404
     if not can_edit_app(user, plan):
-        return jsonify({'error': 'Only the preparing Procurement account may edit this draft.'}), 403
+        return jsonify({'error': 'Only Admin may edit an APP while Draft or Returned.'}), 403
     if section.items:
         return jsonify({'error': 'Move or remove this section’s APP items before deleting it.'}), 409
-    audit('app', plan.id, 'APP_SECTION_REMOVED', {'section_id': section.id, 'name': section.name})
+    section_name = section.name
     db.session.delete(section)
+    db.session.flush()
+    db.session.expire(plan, ['sections'])
+    plan.revision = (plan.revision or 1) + 1
+    app_audit_snapshot(plan, 'APP_SECTION_REMOVED', {'section_id': section_id, 'name': section_name})
     db.session.commit()
     return jsonify({'success': True})
 
@@ -3779,7 +4009,9 @@ def create_app_item(app_id):
     if plan is None:
         return jsonify({'error': 'APP record not found.'}), 404
     if not can_edit_app(user, plan):
-        return jsonify({'error': 'Only the preparing Procurement account may edit this draft.'}), 403
+        return jsonify({'error': 'Only Admin may edit an APP while Draft or Returned.'}), 403
+    if plan.workflow_version == 2:
+        return jsonify({'error': 'Add approved PPMP sources through a consolidation batch to retain office allocations.'}), 409
     data = request.get_json(silent=True) or {}
     section = APPSection.query.filter_by(id=data.get('section_id'), app_id=plan.id).first()
     if section is None:
@@ -3788,10 +4020,11 @@ def create_app_item(app_id):
         values = parse_app_item(data)
     except ValueError as error:
         return jsonify({'error': str(error)}), 400
-    item = APPItem(app_id=plan.id, section_id=section.id, created_by=user.id, **values)
+    item = APPItem(app=plan, section=section, created_by=user.id, **values)
     db.session.add(item)
     db.session.flush()
-    audit('app', plan.id, 'APP_ITEM_ADDED', {'app_item_id': item.id, 'section_id': section.id})
+    plan.revision = (plan.revision or 1) + 1
+    app_audit_snapshot(plan, 'APP_ITEM_ADDED', {'app_item_id': item.id, 'section_id': section.id})
     db.session.commit()
     return jsonify(item.to_dict()), 201
 
@@ -3799,31 +4032,87 @@ def create_app_item(app_id):
 @app.route('/api/apps/<int:app_id>/items/<int:item_id>', methods=['PUT', 'DELETE'])
 @permission_required('app.edit')
 def update_app_item(app_id, item_id):
-    plan, user = db.session.get(AnnualProcurementPlan, app_id), current_session_user()
+    plan, user = AnnualProcurementPlan.query.filter_by(id=app_id).with_for_update().first(), current_session_user()
+    item = APPItem.query.filter_by(id=item_id, app_id=app_id).first()
+    if plan is None or item is None:
+        return jsonify({'error': 'APP item not found.'}), 404
+    completing_new_item = can_complete_added_app_item(user, plan, item)
+    if not can_edit_app(user, plan) and not completing_new_item:
+        return jsonify({'error': 'Only Admin may edit an APP while Draft or Returned.'}), 403
+    if request.method == 'DELETE':
+        if item.contributions or plan.workflow_version == 2:
+            return jsonify({'error': 'Consolidated source rows must retain their office contributions. Revise allocations instead.'}), 409
+        source_id = item.source_ppmp_item_id
+        db.session.delete(item)
+        db.session.flush()
+        db.session.expire(plan, ['items'])
+        plan.revision = (plan.revision or 1) + 1
+        app_audit_snapshot(plan, 'APP_ITEM_REMOVED', {'app_item_id': item_id, 'source_ppmp_item_id': source_id})
+        db.session.commit()
+        return jsonify({'success': True})
+    data = request.get_json(silent=True) or {}
+    if completing_new_item and 'contributions' in data:
+        return jsonify({'error': 'Office allocations can be revised after the APP is returned. Complete the new row fields here.'}), 409
+    section = APPSection.query.filter_by(id=data.get('section_id', item.section_id), app_id=plan.id).first()
+    if section is None:
+        return jsonify({'error': 'Select a valid APP section.'}), 400
+    try:
+        values = parse_app_item({**item.to_dict(), **data})
+        allocation_update = prepare_contribution_update(item, data) if 'contributions' in data else None
+        if allocation_update:
+            values['estimated_budget'] = allocation_update[2]
+        elif item.contributions and (
+            values['estimated_budget'] != Decimal(item.estimated_budget)
+            or ('quantity' in data and precise_number(data['quantity'], 'Row quantity', positive=True) != Decimal(item.quantity))
+        ):
+            raise ValueError('Specify each office contribution when changing a merged quantity or budget.')
+        if item.contributions and values['implementing_unit'] != item.implementing_unit:
+            raise ValueError('The contributing offices are retained from the approved PPMP sources.')
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+    if any(values[field] != getattr(item, field) for field in (
+        'project_title', 'general_description', 'mode_of_procurement',
+        'procurement_start', 'procurement_end', 'source_of_fund',
+    )):
+        item.merge_key = None
+    for field, value in values.items():
+        setattr(item, field, value)
+    item.section_id = section.id
+    if allocation_update:
+        apply_contribution_update(item, allocation_update)
+    if completing_new_item and not app_item_validation_error(item):
+        plan.source_details = {
+            **(plan.source_details or {}),
+            'pending_item_ids': [value for value in (plan.source_details or {}).get('pending_item_ids', []) if value != item.id],
+        }
+    plan.revision = (plan.revision or 1) + 1
+    app_audit_snapshot(plan, 'APP_ITEM_UPDATED', {
+        'app_item_id': item.id, 'section_id': section.id,
+        'note': str(data.get('note') or '').strip() or None,
+    })
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+
+@app.route('/api/apps/<int:app_id>/items/<int:item_id>/contributions', methods=['PUT'])
+@permission_required('app.edit')
+def update_app_contributions(app_id, item_id):
+    plan, user = AnnualProcurementPlan.query.filter_by(id=app_id).with_for_update().first(), current_session_user()
     item = APPItem.query.filter_by(id=item_id, app_id=app_id).first()
     if plan is None or item is None:
         return jsonify({'error': 'APP item not found.'}), 404
     if not can_edit_app(user, plan):
-        return jsonify({'error': 'Only the preparing Procurement account may edit this draft.'}), 403
-    if request.method == 'DELETE':
-        audit('app', plan.id, 'APP_ITEM_REMOVED', {
-            'app_item_id': item.id, 'source_ppmp_item_id': item.source_ppmp_item_id,
-        })
-        db.session.delete(item)
-        db.session.commit()
-        return jsonify({'success': True})
+        return jsonify({'error': 'Only Admin may revise office contributions while the APP is Draft or Returned.'}), 403
     data = request.get_json(silent=True) or {}
-    section = APPSection.query.filter_by(id=data.get('section_id'), app_id=plan.id).first()
-    if section is None:
-        return jsonify({'error': 'Select a valid APP section.'}), 400
     try:
-        values = parse_app_item(data)
+        prepared = prepare_contribution_update(item, data)
     except ValueError as error:
         return jsonify({'error': str(error)}), 400
-    for field, value in values.items():
-        setattr(item, field, value)
-    item.section_id = section.id
-    audit('app', plan.id, 'APP_ITEM_UPDATED', {'app_item_id': item.id, 'section_id': section.id})
+    apply_contribution_update(item, prepared)
+    plan.revision = (plan.revision or 1) + 1
+    app_audit_snapshot(plan, 'APP_CONTRIBUTIONS_UPDATED', {
+        'app_item_id': item.id, 'note': str(data.get('note') or '').strip() or None,
+    })
     db.session.commit()
     return jsonify(item.to_dict())
 
@@ -3843,58 +4132,147 @@ def create_app_comment(app_id):
         return jsonify({'error': 'The selected APP item does not belong to this APP record.'}), 400
     comment = APPComment(app_id=plan.id, app_item_id=item_id, author_id=user.id, message=message)
     db.session.add(comment)
-    audit('app', plan.id, 'APP_COMMENT_ADDED', {'app_item_id': item_id})
+    app_audit_snapshot(plan, 'APP_COMMENT_ADDED', {'app_item_id': item_id, 'message': message})
     db.session.commit()
     return jsonify(comment.to_dict()), 201
 
 
 @app.route("/api/apps/<int:app_id>/transition", methods=["POST"])
 def transition_app(app_id):
-    plan, user = db.session.get(AnnualProcurementPlan, app_id), current_session_user()
+    plan, user = AnnualProcurementPlan.query.filter_by(id=app_id).with_for_update().first(), current_session_user()
     if plan is None:
         return jsonify({"error": "APP record not found."}), 404
     if user is None:
         return jsonify({"error": "Authentication required."}), 401
     data = request.get_json(silent=True) or {}
-    action, note = data.get("action"), (data.get("note") or "").strip() or None
+    action, note = data.get('action'), str(data.get('note') or '').strip() or None
+    if note and len(note) > 5000:
+        return jsonify({'error': 'Review notes must not exceed 5,000 characters.'}), 400
     if action in {'return', 'reject'} and not note:
         return jsonify({'error': 'A reason is required when returning or rejecting an APP.'}), 400
     if action == 'submit':
         if not can_edit_app(user, plan) or not has_permission(user, 'app.submit'):
-            return jsonify({'error': 'Only the preparing Procurement account may submit this APP.'}), 403
+            return jsonify({'error': 'Only Admin may complete and submit an APP while Draft or Returned.'}), 403
         validation_error = validate_app_for_submission(plan)
         if validation_error:
             return jsonify({'error': validation_error}), 400
-    elif action in {'approve', 'return', 'reject'} and not has_permission(user, 'app.review'):
-        return jsonify({'error': 'You are not authorized to review this APP.'}), 403
     expected = expected_app_reviewer(plan)
-    transitions = {
-        ('PROCUREMENT', 'Draft', 'submit'): 'Under Review',
-        ('PROCUREMENT', 'Returned', 'submit'): 'Under Review',
-        (expected, 'Under Review', 'approve'): 'For Admin Approval' if expected == 'BUDGET' else 'Under Review',
-        ('ADMIN', 'For Admin Approval', 'approve'): 'Approved',
-        ('ADMIN', 'Approved', 'finalize'): 'Finalized',
-    }
-    if action in {'return', 'reject'} and user.role in {expected, 'ADMIN'} and plan.status in {'Under Review', 'For Admin Approval'}:
-        target = 'Returned' if action == 'return' else 'Rejected'
-    else:
-        target = transitions.get((user.role, plan.status, action))
-    if target is None:
-        return jsonify({"error": "This APP transition is not allowed."}), 409
     previous = plan.status
+    next_role = None
+    if action == 'submit':
+        next_role = (plan.return_review_role or expected) if previous == 'Returned' else expected
+        next_role = next_role if next_role in APP_REVIEW_ROLES else 'BAC CHAIRMAN'
+        target = 'For Admin Approval' if next_role == 'ADMIN' else 'Under Review'
+        plan.current_review_role, plan.return_review_role = next_role, None
+    elif action in {'approve', 'return', 'reject'}:
+        if not has_permission(user, 'app.review') or user.role != expected:
+            return jsonify({'error': 'Only the current assigned reviewer may perform this APP review.'}), 403
+        if previous not in {'Submitted', 'Under Review', 'For Admin Approval'}:
+            return jsonify({'error': 'This APP is not awaiting review.'}), 409
+        if action == 'approve':
+            validation_error = validate_app_for_submission(plan)
+            if validation_error:
+                return jsonify({'error': f'Admin must complete the APP before approval. {validation_error}'}), 409
+            approved_roles = {
+                row.reviewer_role or (row.performer.role if row.performer else None)
+                for row in plan.approvals if row.action == 'APPROVE'
+            } | {user.role}
+            next_role = next((role for role in APP_REVIEW_ROLES if role not in approved_roles), None)
+            if user.role == 'ADMIN':
+                target, next_role = 'Finalized', None
+            else:
+                target = 'For Admin Approval' if next_role == 'ADMIN' else 'Under Review'
+            plan.current_review_role, plan.return_review_role = next_role, None
+        else:
+            target = 'Returned' if action == 'return' else 'Rejected'
+            plan.return_review_role = user.role if action == 'return' else None
+            plan.current_review_role = user.role if action == 'return' else None
+            next_role = 'ADMIN' if action == 'return' else None
+    elif action == 'finalize' and user.role == 'ADMIN' and previous == 'Approved' and plan.workflow_version != 2:
+        target = 'Finalized'
+        plan.current_review_role = None
+    else:
+        return jsonify({'error': 'This APP transition is not allowed.'}), 409
     plan.status = target
-    db.session.add(APPApproval(app_id=plan.id, action=action.upper(), performed_by=user.id, note=note))
+    db.session.flush()
+    db.session.add(APPApproval(
+        app=plan, action=action.upper(), performed_by=user.id, reviewer_role=user.role,
+        note=note, snapshot=app_snapshot(plan),
+    ))
     if note:
         db.session.add(APPComment(app_id=plan.id, author_id=user.id, message=note))
-    audit("app", plan.id, action.upper(), {"from": previous, "to": target})
-    next_role = ('BAC CHAIRMAN' if target == 'Under Review' and action == 'submit' else
-                 ('EO' if target == 'Under Review' and expected == 'BAC CHAIRMAN' else
-                  ('BUDGET' if target == 'Under Review' and expected == 'EO' else
-                   ('ADMIN' if target == 'For Admin Approval' else None))))
+    app_audit_snapshot(plan, action.upper(), {
+        'from': previous, 'to': target, 'reviewer_role': user.role,
+        'return_to_reviewer': plan.return_review_role, 'note': note,
+    })
     if next_role:
-        notify_roles((next_role,), 'APP pending action', f'{plan.plan_type} for {plan.office} requires your review.')
+        notify_roles((next_role,), 'APP pending action',
+                     f'APP FY {plan.fiscal_year} revision {plan.revision} requires your action. {note or ""}'.strip())
+    if action == 'return':
+        source_creator_ids = {
+            allocation.source_ppmp_item.created_by
+            for item in plan.items for allocation in item.contributions
+            if allocation.source_ppmp_item and allocation.source_ppmp_item.created_by is not None
+        }
+        if source_creator_ids:
+            add_notification(User.query.filter(User.id.in_(source_creator_ids), User.is_active.is_(True)).all(),
+                             'APP office feedback requested',
+                             f'APP FY {plan.fiscal_year} was returned by {user.role}: {note}. '
+                             'Open your official PPMP record to send feedback to Admin.', 'warning')
     db.session.commit()
     return jsonify(app_detail_dict(plan))
+
+
+@app.route('/api/ppmp-orders/<int:order_id>/app-feedback', methods=['GET', 'POST'])
+@permission_required('ppmp.report')
+def official_ppmp_app_feedback(order_id):
+    order, user = db.session.get(PPMPOrder, order_id), current_session_user()
+    if order is None:
+        return jsonify({'error': 'PPMP record not found.'}), 404
+    if user.role != 'ADMIN' and (order.requested_by != user.id or order.office_id != user.college_id):
+        return jsonify({'error': 'Only the office creator or Admin may access this PPMP office feedback.'}), 403
+    source_ids = [item.ppmp_item_id for item in order.items if item.ppmp_item_id is not None]
+    allocations = APPItemContribution.query.filter(APPItemContribution.source_ppmp_item_id.in_(source_ids)).all()
+    linked_plans = {allocation.app_item.app_id: allocation.app_item.app for allocation in allocations}
+    if request.method == 'GET':
+        result = []
+        for app_id, plan in linked_plans.items():
+            own_allocations = [row for row in allocations if row.app_item.app_id == app_id]
+            own_item_ids = {row.app_item_id for row in own_allocations}
+            source_creator_ids = {row.source_ppmp_item.created_by for item in plan.items for row in item.contributions}
+            comments = [
+                row.to_dict() for row in plan.comments
+                if (row.author_id == user.id or (row.author and row.author.role in APP_REVIEW_ROLES)
+                    or (row.author_id not in source_creator_ids and row.app_item_id in own_item_ids))
+                and (row.app_item_id is None or row.app_item_id in own_item_ids)
+            ]
+            result.append({
+                'app_id': plan.id, 'fiscal_year': plan.fiscal_year, 'status': plan.status,
+                'revision': plan.revision, 'expected_reviewer': expected_app_reviewer(plan),
+                'is_supplemental': plan.supplemental_parent_id is not None,
+                'contributions': [row.to_dict() for row in own_allocations], 'comments': comments,
+            })
+        return jsonify({'apps': result})
+    data = request.get_json(silent=True) or {}
+    plan = linked_plans.get(data.get('app_id'))
+    if plan is None:
+        return jsonify({'error': 'Select an APP containing a contribution from this PPMP.'}), 400
+    message = str(data.get('message') or '').strip()
+    if not message or len(message) > 5000:
+        return jsonify({'error': 'Feedback is required and must not exceed 5,000 characters.'}), 400
+    item_id = data.get('app_item_id')
+    if item_id is not None and not any(row.app_item_id == item_id for row in allocations if row.app_item.app_id == plan.id):
+        return jsonify({'error': 'Select an APP row containing this office contribution.'}), 400
+    comment = APPComment(app=plan, app_item_id=item_id, author_id=user.id, message=message)
+    db.session.add(comment)
+    app_audit_snapshot(plan, 'APP_OFFICE_FEEDBACK', {
+        'source_order_id': order.id, 'office_id': order.office_id,
+        'app_item_id': item_id, 'message': message,
+    })
+    notify_roles(('ADMIN',), 'Office feedback on APP',
+                 f'{order.office.code if order.office else user.office} sent feedback for APP FY {plan.fiscal_year}: {message}')
+    db.session.commit()
+    return jsonify(comment.to_dict()), 201
 
 
 def app_approval_identity(plan, role):
@@ -3923,7 +4301,7 @@ def export_app_pdf(app_id):
     small = styles['BodyText'].clone('APPCell')
     small.fontSize, small.leading = 5.5, 6.5
     def cell(value):
-        return Paragraph(str(value or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'), small)
+        return Paragraph(str(value or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>'), small)
     headers = [
         'Project Title', 'End-User / Implementing Unit', 'General Description of Project',
         'Mode of Procurement', 'Early Procurement Activity?',
@@ -3942,7 +4320,7 @@ def export_app_pdf(app_id):
         rows.append([cell(section.name)] + [''] * 11)
         for item in section.items:
             rows.append([
-                cell(item.project_title), cell(item.implementing_unit), cell(item.general_description),
+                cell(export_project_title(item)), cell(export_office_contributions(item)), cell(item.general_description),
                 cell(item.mode_of_procurement), cell('Yes' if item.early_procurement_activity else 'No'
                                                      if item.early_procurement_activity is False else ''),
                 cell(item.bid_evaluation_criteria), cell(APPItem.month_label(item.procurement_start)),
@@ -3974,8 +4352,8 @@ def export_app_pdf(app_id):
         ])
     table.setStyle(TableStyle(style))
     recommendations = ', '.join(filter(None, (
-        app_approval_identity(plan, 'BAC CHAIRMAN'), app_approval_identity(plan, 'EO'),
-        app_approval_identity(plan, 'BUDGET'),
+        app_approval_identity(plan, 'BAC CHAIRMAN'), app_approval_identity(plan, 'BUDGET'),
+        app_approval_identity(plan, 'EO'),
     )))
     signatures = Table([
         ['Prepared by', 'Recommended / Reviewed by', 'Approved by'],
@@ -4049,7 +4427,7 @@ def export_app_excel(app_id):
         worksheet.cell(section_row, 1).font = Font(bold=True)
         for item in section.items:
             worksheet.append([
-                item.project_title, item.implementing_unit, item.general_description,
+                export_project_title(item), export_office_contributions(item), item.general_description,
                 item.mode_of_procurement,
                 'Yes' if item.early_procurement_activity else 'No' if item.early_procurement_activity is False else '',
                 item.bid_evaluation_criteria, APPItem.month_label(item.procurement_start),
@@ -4063,7 +4441,7 @@ def export_app_excel(app_id):
     worksheet.append([
         plan.creator.full_name if plan.creator else '', '', '', '',
         ', '.join(filter(None, (app_approval_identity(plan, 'BAC CHAIRMAN'),
-                                app_approval_identity(plan, 'EO'), app_approval_identity(plan, 'BUDGET')))),
+                                app_approval_identity(plan, 'BUDGET'), app_approval_identity(plan, 'EO')))),
         '', '', '', app_approval_identity(plan, 'ADMIN'),
     ])
     for row in worksheet.iter_rows(min_row=4, max_row=worksheet.max_row, min_col=1, max_col=12):
@@ -4182,6 +4560,9 @@ def export_excel():
     db.session.commit()
     output.seek(0)
     return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=f"PPMP_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
+
+
+register_ppmp_workflow_routes(sys.modules[__name__])
 
 
 if __name__ == "__main__":
