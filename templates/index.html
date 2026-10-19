@@ -362,12 +362,21 @@ td.center{text-align:center}
 .notif-list{flex:1;overflow-y:auto;padding:8px}
 .notif-item{
   padding:10px 12px;border-radius:8px;margin-bottom:4px;
+  display:block;width:100%;text-align:left;cursor:pointer;border:0;font-family:inherit;
   border-left:3px solid var(--blue);background:var(--sky);
   font-size:11px;transition:opacity .3s;
 }
 .notif-item.add{border-color:var(--green)}
 .notif-item.delete{border-color:var(--red);background:#FEF2F2}
 .notif-item.status_change{border-color:var(--gold);background:#FFFBEB}
+.notif-item.success{border-color:var(--green)}
+.notif-item.warning{border-color:var(--gold);background:#FFFBEB}
+.notif-item.error{border-color:var(--red);background:#FEF2F2}
+.notif-item.unread{box-shadow:inset 0 0 0 1px var(--blue)}
+.notif-item:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.notif-item:disabled{cursor:wait;opacity:.65}
+.notification-target{outline:2px solid var(--blue);outline-offset:3px}
+.notif-heading{font-weight:700;color:var(--navy);margin-bottom:4px}
 .notif-msg{color:var(--gray-700);line-height:1.4}
 .notif-time{color:var(--gray-500);font-size:10px;margin-top:3px}
 
@@ -810,15 +819,16 @@ td.center{text-align:center}
     <div class="notif-drawer-title">🔔 Live Notifications</div>
     <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()">✕</button>
   </div>
+  <div id="notif-status" role="status" style="display:none;padding:10px 16px;font-size:12px"></div>
   <div class="notif-list" id="notif-list">
     <div class="empty-state" style="padding:30px">
       <div class="empty-icon">🔕</div>
-      <div class="empty-title">No notifications</div>
-      <div class="empty-desc">Real-time updates will appear here</div>
+      <div class="empty-title">Loading notifications</div>
+      <div class="empty-desc">Checking your PPMP and APP updates</div>
     </div>
   </div>
   <div style="padding:10px;border-top:1px solid var(--gray-200)">
-    <button class="btn btn-ghost btn-sm" style="width:100%" onclick="clearNotifs()">Clear All</button>
+    <button class="btn btn-ghost btn-sm" style="width:100%" onclick="clearNotifs(this)">Clear All</button>
   </div>
 </div>
 
@@ -1516,6 +1526,14 @@ let editingItemId = null;
 let allItems = [];
 let summary = {};
 let notifCount = 0;
+let notificationRows = [];
+let notificationRequest = null;
+let notificationReadRequest = null;
+let notificationsInitialized = false;
+let notificationLatestId = 0;
+let notificationsMutating = false;
+let notificationPollTimer = null;
+let notificationOpeningId = null;
 let socket = null;
 const isAdminSession = appConfig.dataset.isAdmin === 'true';
 let currentUser = isAdminSession ? { role: 'ADMIN' } : null;
@@ -1680,6 +1698,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     document.getElementById('fiscal-year').textContent = new Date().getFullYear();
     await loadCurrentUser();
+    initLiveNotifications();
     systemMetadata = await apiFetch(`${API}/metadata`);
     populateWorkflowSelects();
     const allowed = permission => currentPermissions.includes('*') || currentPermissions.includes(permission);
@@ -1770,7 +1789,8 @@ function initWebSocket() {
     });
 
     socket.on('ppmp_notification', (data) => {
-      addNotification(data);
+      // Broadcasts are only refresh hints. The server selects this user's messages.
+      loadNotifications();
       if (data.type === 'add' || data.type === 'update' || data.type === 'delete') {
         loadPPMPDashboard();
         if (currentPermissions.includes('*') || currentPermissions.includes('ppmp.order.view')) loadPPMPRequests();
@@ -1800,6 +1820,9 @@ async function apiFetch(url, opts = {}) {
     const res = await fetch(url, { credentials: 'same-origin', headers: {'Content-Type':'application/json'}, signal: controller.signal, ...fetchOptions });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Request failed.');
+    if (requestMethod !== 'GET' && !String(url).startsWith(`${API}/notifications`)) {
+      refreshNotificationsAfterAction();
+    }
     return data;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('The request is taking longer than expected. Please try again.');
@@ -2500,6 +2523,9 @@ function renderPPMPRequestReport(report) {
 
 function ppmpReportReviewActions(report) {
   if (report.source_type === 'indicative') return '';
+  if (currentUser.role === 'ADMIN' && !report.is_official) {
+    return `<button class="btn btn-primary" type="button" onclick="designateOfficialPPMP(${report.id},this)">Set Official PPMP</button>`;
+  }
   const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(report.status)) || (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(report.status));
   if (!mayReview) return '';
   return ['approve', 'return', 'reject'].map(action => `<button class="btn ${action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-primary'}" type="button" onclick="transitionPPMPOrder(${report.id},'${action}',this)">${action.charAt(0).toUpperCase() + action.slice(1)}</button>`).join('');
@@ -2544,7 +2570,7 @@ async function loadPPMPAppFeedback(report) {
     if (selectedPPMPRequestReport !== report) return;
     const plans = result.apps || [];
     container.hidden = !plans.length;
-    container.innerHTML = plans.length ? `<h3>APP Office Feedback</h3><p class="text-xs text-muted">Review your office contribution and send feedback to Admin. Admin applies APP corrections; the approved PPMP stays locked.</p>${plans.map(plan => `<div class="review-note mt-12"><strong>${plan.is_supplemental ? 'Supplemental ' : ''}APP #${plan.app_id} - FY ${plan.fiscal_year} - ${escapeHtml(plan.status)}</strong><div class="text-xs text-muted">Revision ${plan.revision || 1}${plan.expected_reviewer ? ` - Reviewer: ${escapeHtml(plan.expected_reviewer)}` : ''}</div><div class="table-wrap mt-8"><table><thead><tr><th>Item</th><th>Original Quantity</th><th>Original Budget</th><th>APP Quantity</th><th>APP Budget</th></tr></thead><tbody>${plan.contributions.map(row => `<tr><td>${escapeHtml(row.source_snapshot?.item_description || '')}</td><td>${fmtNum(row.original_quantity)}</td><td>&#8369; ${fmt(row.original_budget)}</td><td>${fmtNum(row.quantity)}</td><td>&#8369; ${fmt(row.estimated_budget)}</td></tr>`).join('')}</tbody></table></div><div class="comment-list mt-8">${(plan.comments || []).map(row => `<div class="comment-entry"><div class="comment-entry-meta">${escapeHtml(row.author || '')} - ${escapeHtml(row.role || '')}</div><div class="comment-entry-message">${escapeHtml(row.message)}</div></div>`).join('')}</div><div class="form-group mt-12"><label class="form-label" for="ppmp-app-feedback-${plan.app_id}">Office feedback for Admin</label><textarea class="form-control" id="ppmp-app-feedback-${plan.app_id}" rows="2" maxlength="5000"></textarea></div><button class="btn btn-primary btn-sm" type="button" onclick="sendPPMPAppFeedback(${plan.app_id},this)">Send Feedback to Admin</button></div>`).join('')}` : '';
+    container.innerHTML = plans.length ? `<h3>APP Office Feedback</h3><p class="text-xs text-muted">Review your office contribution and send feedback to Admin. Admin applies APP corrections; the approved PPMP stays locked.</p>${plans.map(plan => `<div class="review-note mt-12" id="ppmp-app-feedback-record-${plan.app_id}"><strong>${plan.is_supplemental ? 'Supplemental ' : ''}APP #${plan.app_id} - FY ${plan.fiscal_year} - ${escapeHtml(plan.status)}</strong><div class="text-xs text-muted">Revision ${plan.revision || 1}${plan.expected_reviewer ? ` - Reviewer: ${escapeHtml(plan.expected_reviewer)}` : ''}</div><div class="table-wrap mt-8"><table><thead><tr><th>Item</th><th>Original Quantity</th><th>Original Budget</th><th>APP Quantity</th><th>APP Budget</th></tr></thead><tbody>${plan.contributions.map(row => `<tr><td>${escapeHtml(row.source_snapshot?.item_description || '')}</td><td>${fmtNum(row.original_quantity)}</td><td>&#8369; ${fmt(row.original_budget)}</td><td>${fmtNum(row.quantity)}</td><td>&#8369; ${fmt(row.estimated_budget)}</td></tr>`).join('')}</tbody></table></div><div class="comment-list mt-8">${(plan.comments || []).map(row => `<div class="comment-entry"><div class="comment-entry-meta">${escapeHtml(row.author || '')} - ${escapeHtml(row.role || '')}</div><div class="comment-entry-message">${escapeHtml(row.message)}</div></div>`).join('')}</div><div class="form-group mt-12"><label class="form-label" for="ppmp-app-feedback-${plan.app_id}">Office feedback for Admin</label><textarea class="form-control" id="ppmp-app-feedback-${plan.app_id}" rows="2" maxlength="5000"></textarea></div><button class="btn btn-primary btn-sm" type="button" onclick="sendPPMPAppFeedback(${plan.app_id},this)">Send Feedback to Admin</button></div>`).join('')}` : '';
   } catch (error) {
     if (selectedPPMPRequestReport === report) {
       container.hidden = false;
@@ -2592,22 +2618,22 @@ async function openIndicativeCopy(copyId) {
 }
 
 async function openPPMPRequestReport(orderId, inline = false) {
-  if (!currentUser || !hasClientPermission('ppmp.report')) return;
+  if (!currentUser || !hasClientPermission('ppmp.report')) return false;
   const sourcePanel = inline ? document.getElementById('panel-ppmp-request-records') : document.querySelector('.panel.active');
-  if (inline && !sourcePanel?.classList.contains('active')) return;
+  if (inline && !sourcePanel?.classList.contains('active')) return false;
   const detail = document.getElementById('ppmp-request-report-detail');
   if (selectedPPMPRequestReport?.id === orderId && (ppmpReportEditing || ppmpReportSaving) &&
       !detail.hidden && document.getElementById('panel-ppmp-request-document').classList.contains('active')) {
     detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    return;
+    return true;
   }
-  if (!prepareToLeavePPMPRequestReport()) return;
+  if (!prepareToLeavePPMPRequestReport()) return false;
   const requestId = ++ppmpRequestReportOpenRequest;
   ppmpReportLoading = true;
   updatePPMPReportEditingControls();
   try {
     const report = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
-    if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return;
+    if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return false;
     ppmpReportReturnPanel = 'ppmp-request-records';
     renderPPMPRequestReport(report);
     if (inline) {
@@ -2616,10 +2642,12 @@ async function openPPMPRequestReport(orderId, inline = false) {
       showPanel('ppmp-request-document', document.getElementById('reports-ppmp-request-nav'));
     }
     detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
   } catch (error) {
     if (requestId === ppmpRequestReportOpenRequest && sourcePanel?.classList.contains('active')) {
       showToast(error.message, 'PPMP Request Record', 'error');
     }
+    return false;
   } finally {
     if (requestId === ppmpRequestReportOpenRequest) {
       ppmpReportLoading = false;
@@ -3083,36 +3111,212 @@ async function exportPDF() {
 // NOTIFICATIONS
 // ─────────────────────────────────────────────
 function toggleDrawer() {
-  document.getElementById('notif-drawer').classList.toggle('open');
-  notifCount = 0;
-  document.getElementById('notif-count').style.display = 'none';
+  const open = document.getElementById('notif-drawer').classList.toggle('open');
+  if (open) loadNotifications();
 }
 
-function addNotification(data) {
-  notifCount++;
+function refreshNotificationsAfterAction() {
+  if (notificationRequest) notificationRequest.then(() => loadNotifications());
+  else loadNotifications();
+}
+
+function initLiveNotifications() {
+  if (notificationPollTimer) return;
+  loadNotifications();
+  notificationPollTimer = setInterval(() => {
+    if (!document.hidden && navigator.onLine !== false) loadNotifications();
+  }, 5000);
+  window.addEventListener('online', () => loadNotifications());
+  window.addEventListener('focus', () => loadNotifications());
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) loadNotifications();
+  });
+}
+
+function notificationStatus(message = '') {
+  const status = document.getElementById('notif-status');
+  status.textContent = message;
+  status.style.display = message ? 'block' : 'none';
+}
+
+function renderNotifications() {
   const countEl = document.getElementById('notif-count');
-  countEl.textContent = notifCount;
-  countEl.style.display = 'flex';
-
+  countEl.textContent = notifCount > 99 ? '99+' : String(notifCount);
+  countEl.style.display = notifCount ? 'flex' : 'none';
   const list = document.getElementById('notif-list');
-  const emptyState = list.querySelector('.empty-state');
-  if (emptyState) emptyState.remove();
-
-  const div = document.createElement('div');
-  div.className = `notif-item ${data.type || ''}`;
-  div.innerHTML = `<div class="notif-msg">${data.message}</div>
-    <div class="notif-time">${new Date().toLocaleTimeString()}</div>`;
-  list.insertBefore(div, list.firstChild);
-
-  showToast(data.message, 'Live Update', 'success');
+  const scrollTop = list.scrollTop;
+  const fragment = document.createDocumentFragment();
+  if (!notificationRows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.style.padding = '30px';
+    empty.innerHTML = '<div class="empty-icon">🔕</div><div class="empty-title">No notifications</div>' +
+      '<div class="empty-desc">Your PPMP and APP updates will appear here</div>';
+    fragment.appendChild(empty);
+  }
+  for (const notification of notificationRows) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    const type = ['info', 'success', 'warning', 'error'].includes(notification.type) ? notification.type : 'info';
+    item.className = `notif-item ${type}${notification.is_read ? '' : ' unread'}`;
+    item.disabled = notificationOpeningId === notification.id;
+    item.setAttribute('aria-label', `${notification.title}. Open related record`);
+    item.addEventListener('click', () => openNotification(notification.id, item));
+    const heading = document.createElement('div');
+    heading.className = 'notif-heading';
+    heading.textContent = notification.title;
+    const message = document.createElement('div');
+    message.className = 'notif-msg';
+    message.textContent = notification.message;
+    const time = document.createElement('div');
+    time.className = 'notif-time';
+    // Flask stores UTC timestamps; older rows omit the timezone suffix.
+    const stamp = notification.created_at || '';
+    const date = new Date(/(?:Z|[+-]\d{2}:\d{2})$/i.test(stamp) ? stamp : `${stamp}Z`);
+    time.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+    item.append(heading, message, time);
+    fragment.appendChild(item);
+  }
+  list.replaceChildren(fragment);
+  list.scrollTop = scrollTop;
 }
 
-function clearNotifs() {
-  document.getElementById('notif-list').innerHTML = `<div class="empty-state" style="padding:30px">
-    <div class="empty-icon">🔕</div><div class="empty-title">No notifications</div>
-    <div class="empty-desc">Real-time updates will appear here</div></div>`;
-  notifCount = 0;
-  document.getElementById('notif-count').style.display = 'none';
+function loadNotifications() {
+  if (!currentUser?.id || notificationsMutating) return Promise.resolve();
+  if (notificationRequest) return notificationRequest;
+  notificationRequest = (async () => {
+    try {
+      if (notificationReadRequest) await notificationReadRequest;
+      const data = await apiFetch(`${API}/notifications?summary=1`, { cache: 'no-store', showLoading: false });
+      const rows = data.notifications || [];
+      const newRows = notificationsInitialized
+        ? rows.filter(row => row.id > notificationLatestId && !row.is_read) : [];
+      const changed = JSON.stringify(rows) !== JSON.stringify(notificationRows) || notifCount !== data.unread_count;
+      notificationRows = rows;
+      notifCount = Number(data.unread_count) || 0;
+      notificationLatestId = Math.max(notificationLatestId, ...rows.map(row => row.id));
+      if (changed || !notificationsInitialized) renderNotifications();
+      notificationsInitialized = true;
+      notificationStatus();
+      if (newRows.length) {
+        // Use text nodes: titles and review comments can contain user-entered text.
+        const newest = newRows[0];
+        const toast = document.createElement('div');
+        toast.className = `toast ${['success', 'warning', 'error'].includes(newest.type) ? newest.type : ''}`;
+        const body = document.createElement('div');
+        body.className = 'toast-body';
+        const title = document.createElement('div');
+        title.className = 'toast-title';
+        title.textContent = newRows.length > 1 ? `${newRows.length} new notifications` : newest.title;
+        const message = document.createElement('div');
+        message.className = 'toast-msg';
+        message.textContent = newest.message;
+        body.append(title, message);
+        toast.appendChild(body);
+        document.getElementById('toast-container').appendChild(toast);
+        setTimeout(() => toast.remove(), 6000);
+      }
+    } catch (error) {
+      notificationStatus('Unable to refresh notifications. Retrying automatically.');
+    }
+  })().finally(() => { notificationRequest = null; });
+  return notificationRequest;
+}
+
+function highlightNotificationTarget(element) {
+  if (!element) return;
+  element.classList.add('notification-target');
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => element.classList.remove('notification-target'), 6000);
+}
+
+async function openNotification(notificationId, button) {
+  if (notificationOpeningId !== null || notificationsMutating) return;
+  notificationOpeningId = notificationId;
+  button.disabled = true;
+  try {
+    const result = await apiFetch(`${API}/notifications/${notificationId}/target`, { cache: 'no-store', showLoading: false });
+    if (result.completed) {
+      await loadNotifications();
+      notificationStatus('This review has already been completed.');
+      return;
+    }
+    const target = result.target;
+    if (!target) throw new Error('The related record is no longer available.');
+    if (target.kind === 'ppmp_order') {
+      if (!await openPPMPRequestReport(target.id)) return;
+      if (target.app_id && selectedPPMPRequestReport?.may_provide_app_feedback) {
+        await loadPPMPAppFeedback(selectedPPMPRequestReport);
+        highlightNotificationTarget(document.getElementById(`ppmp-app-feedback-record-${target.app_id}`));
+      }
+    } else if (target.kind === 'account' || target.kind === 'accounts') {
+      if (await showPanel('account-registration') === false) return;
+      if (target.id) {
+        const detail = document.getElementById(`pending-detail-${target.id}`);
+        if (!detail) throw new Error('This account is no longer waiting for approval.');
+        detail.hidden = false;
+        highlightNotificationTarget(detail.closest('.approval-account'));
+      } else {
+        highlightNotificationTarget(document.getElementById('pending-user-list'));
+      }
+    } else if (target.kind === 'app' || target.kind === 'apps') {
+      if (await showPanel('apps') === false) return;
+      if (target.id) await openAPP(target.id, true);
+    } else if (target.kind === 'ppmp_record') {
+      if (await showPanel('ppmp-planning') === false) return;
+      await selectPPMPRecord(target.id);
+      if (selectedPPMPRecordId !== target.id || document.getElementById('ppmp-record-workspace').hidden) return;
+    } else if (target.kind === 'ppmp_requests') {
+      if (await showPanel('ppmp-requests') === false) return;
+    } else if (target.kind === 'ppmp_dashboard') {
+      if (showPanel('ppmp-dashboard') === false) return;
+    } else if (target.kind === 'profile') {
+      document.getElementById('profile-panel').classList.add('open');
+      document.getElementById('profile-toggle').setAttribute('aria-expanded', 'true');
+    } else {
+      throw new Error('The related review screen is unavailable.');
+    }
+    document.getElementById('notif-drawer').classList.remove('open');
+    // Opening marks it read. A review task remains until its workflow action succeeds.
+    notificationReadRequest = apiFetch(`${API}/notifications/${notificationId}/read`, {
+      method: 'POST', body: JSON.stringify({ opened: true }), showLoading: false,
+    });
+    const saved = await notificationReadRequest;
+    const row = notificationRows.find(item => item.id === notificationId);
+    if (row && !row.is_read) notifCount = Math.max(0, notifCount - 1);
+    if (row) row.is_read = true;
+    if (saved.removed) notificationRows = notificationRows.filter(item => item.id !== notificationId);
+    renderNotifications();
+    notificationStatus();
+  } catch (error) {
+    notificationStatus(error.message || 'Unable to open this notification. Please try again.');
+  } finally {
+    notificationReadRequest = null;
+    notificationOpeningId = null;
+    button.disabled = false;
+    loadNotifications();
+  }
+}
+
+async function clearNotifs(button) {
+  if (notificationsMutating) return;
+  if (button) button.disabled = true;
+  try {
+    if (notificationRequest) await notificationRequest;
+    if (notificationReadRequest) await notificationReadRequest;
+    notificationsMutating = true;
+    await apiFetch(`${API}/notifications`, { method: 'DELETE', showLoading: false });
+    notificationRows = [];
+    notificationLatestId = 0;
+    notifCount = 0;
+    renderNotifications();
+    notificationStatus();
+  } catch (error) {
+    notificationStatus('Unable to clear notifications. Please try again.');
+  } finally {
+    notificationsMutating = false;
+    if (button) button.disabled = false;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -3225,22 +3429,21 @@ function showPanel(id, el, reportQuery = null) {
   }
 
   if (id === 'consolidation') renderConsolidation();
-  const reportsLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
+  let panelLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
   if (id === 'account-registration') {
-    loadAccountRegistrationOptions();
-    refreshAccountAdministration();
+    panelLoad = Promise.all([loadAccountRegistrationOptions(), refreshAccountAdministration()]);
   }
   if (id === 'dashboard') loadAdminOverview();
   if (id === 'ppmp-dashboard') loadPPMPDashboard();
   if (id === 'app-dashboard') loadAPPDashboard();
-  if (id === 'ppmp-requests') loadPPMPRequests();
+  if (id === 'ppmp-requests') panelLoad = loadPPMPRequests();
   if (id === 'ppmp-wishlist') loadWishlist();
   if (id === 'cse-selected-items') renderOrderDraft();
-  if (id === 'ppmp-planning') loadPPMPPlanning();
-  if (id === 'apps') loadApps();
+  if (id === 'ppmp-planning') panelLoad = loadPPMPPlanning();
+  if (id === 'apps') panelLoad = loadApps();
   if (id === 'activity-log') loadActivityLog();
   if (window.matchMedia('(max-width: 900px)').matches) closeSidebar();
-  return reportsLoad;
+  return panelLoad;
 }
 
 async function legacyLoadPPMPRequests() {
@@ -3579,6 +3782,9 @@ async function designateOfficialPPMP(orderId, button) {
   try {
     await apiFetch(`${API}/ppmp-orders/${orderId}/designate-official`, { method: 'POST', body: JSON.stringify({}), loadingMessage: 'Setting official PPMP...' });
     await loadPPMPRequests();
+    if (selectedPPMPRequestReport?.id === orderId && selectedPPMPRequestReport.source_type === 'official') {
+      renderPPMPRequestReport(await apiFetch(`${API}/reports/ppmp-orders/${orderId}`));
+    }
     showToast('Official PPMP selected. Historical requests remain in the records.', 'PPMP', 'success');
   } catch (error) { showToast(error.message, 'Official PPMP', 'error'); }
   finally { button.disabled = false; }

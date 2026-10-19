@@ -315,6 +315,10 @@ class PPMPNotification(db.Model):
     is_read       = db.Column(db.Boolean, default=False, nullable=False)
     read_at       = db.Column(db.DateTime, nullable=True)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    target_type   = db.Column(db.String(32), nullable=True)
+    target_id     = db.Column(db.Integer, nullable=True)
+    action_stage  = db.Column(db.String(64), nullable=True)
+    resolved_at   = db.Column(db.DateTime, nullable=True)
 
     recipient = db.relationship('User')
     ppmp_item = db.relationship('PPMPItem')

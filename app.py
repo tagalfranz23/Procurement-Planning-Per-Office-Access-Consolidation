@@ -50,6 +50,10 @@ from models import (
 )
 from models import OfficialPPMP
 from workflow_migrations import apply_workflow_migrations, workflow_required_columns
+from notification_actions import (
+    backfill_notification_links, notification_context, notification_payload,
+    resolve_notification_tasks,
+)
 from ppmp_workflow import (
     can_edit_official_ppmp, create_indicative_copy, indicative_report_payload,
     register_ppmp_workflow_routes, create_copy_response, extended_report_changes,
@@ -360,15 +364,90 @@ def roles_required(*roles):
     return decorator
 
 
-def add_notification(recipients, title, message, notification_type="info", ppmp_item_id=None):
+def add_notification(recipients, title, message, notification_type="info", ppmp_item_id=None,
+                     *, target_type=None, target_id=None, action_stage=None):
+    seen = set()
     for recipient in recipients:
+        if recipient is None or recipient.id in seen:
+            continue
+        seen.add(recipient.id)
         db.session.add(PPMPNotification(recipient_id=recipient.id, ppmp_item_id=ppmp_item_id,
-                                        type=notification_type, title=title, message=message))
+                                        type=notification_type, title=title, message=message,
+                                        target_type=target_type or ('ppmp_item' if ppmp_item_id else None),
+                                        target_id=target_id if target_type else ppmp_item_id,
+                                        action_stage=action_stage))
 
 
-def notify_roles(roles, title, message, notification_type="info", ppmp_item_id=None):
-    add_notification(User.query.filter(User.role.in_(roles), User.is_active.is_(True)).all(),
-                     title, message, notification_type, ppmp_item_id)
+def notify_roles(roles, title, message, notification_type="info", ppmp_item_id=None, **target):
+    add_notification(User.query.filter(User.role.in_(roles), User.is_active.is_(True),
+                                       User.account_status == 'ACTIVE').all(),
+                     title, message, notification_type, ppmp_item_id, **target)
+
+
+def notify_offices(office_ids, title, message, notification_type='info', extra_recipients=(), **target):
+    """Notify every active account in the affected offices, never unrelated offices."""
+    office_ids = {office_id for office_id in office_ids if office_id is not None}
+    office_codes = [office.code for office in College.query.filter(College.id.in_(office_ids)).all()]
+    recipients = User.query.filter(
+        User.is_active.is_(True), User.account_status == 'ACTIVE',
+        or_(User.college_id.in_(office_ids), User.office.in_(office_codes)),
+    ).all() if office_ids else []
+    recipients.extend(user for user in extra_recipients
+                      if user and user.is_active and user.account_status == 'ACTIVE')
+    add_notification(recipients, title, message, notification_type, **target)
+
+
+def notify_ppmp_order_update(order, action, reviewer_role, note=None):
+    label = (f'{order.reference_number} '
+             f'({order.office.code if order.office else "Office"}, FY {order.fiscal_year})')
+    if order.status in {'Pending Admin Approval', 'Procurement Review'}:
+        detail = ('was resubmitted and requires Administrator review.' if action == 'submit'
+                  else 'was approved by Procurement and requires Administrator review.')
+        title = 'PPMP awaiting Administrator review'
+        notify_roles(('ADMIN',), title, f'{label} {detail} Open PPMP Request Records to review it.',
+                     target_type='ppmp_order', target_id=order.id, action_stage='ADMIN')
+    elif order.status in {'Submitted', 'EO Review'}:
+        detail = 'was resubmitted for Procurement review.' if order.return_stage else 'was submitted for Procurement review.'
+        title = 'PPMP awaiting Procurement review'
+        notify_roles(('PROCUREMENT',), title, f'{label} {detail} Open PPMP Request Records to review it.',
+                     target_type='ppmp_order', target_id=order.id, action_stage='PROCUREMENT')
+    else:
+        title = f'PPMP {order.status.lower()}'
+        detail = {
+            'Returned': f'was returned by {reviewer_role}. The creator must correct and resubmit it.',
+            'Rejected': f'was rejected by {reviewer_role}.',
+            'Approved': 'received final Administrator approval. The official PPMP is now locked.',
+            'Processing': 'is now being processed.',
+            'Completed': 'has been completed.',
+        }.get(order.status, f'is now {order.status}.')
+    message = f'{label} {detail}' + (f' Review note: {note}' if note else '')
+    notification_type = ('success' if order.status in {'Approved', 'Completed'} else
+                         'warning' if order.status in {'Returned', 'Rejected'} else 'info')
+    if order.status not in {'Pending Admin Approval', 'Procurement Review'} and reviewer_role != 'ADMIN':
+        notify_roles(('ADMIN',), f'PPMP {order.status.lower()}', message, notification_type,
+                     target_type='ppmp_order', target_id=order.id)
+    notify_offices({order.office_id}, title, message, notification_type,
+                   extra_recipients=[order.requester], target_type='ppmp_order', target_id=order.id,
+                   action_stage='CREATOR' if order.status == 'Returned' else None)
+
+
+def app_notification_label(plan):
+    supplemental = 'Supplemental APP' if plan.supplemental_parent_id else 'APP'
+    return f'{supplemental} #{plan.id}, FY {plan.fiscal_year}, revision {plan.revision or 1}'
+
+
+def notify_app_offices(plan, title, message, notification_type='info', app_items=None, action_stage=None):
+    # Contributions cover merged sources; source items also cover historical APPs.
+    items = plan.items if app_items is None else app_items
+    office_ids = {row.office_id for item in items for row in item.contributions}
+    sources = [item.source_ppmp_item for item in items if item.source_ppmp_item is not None]
+    office_ids.update(item.college_id for item in sources)
+    if not office_ids:
+        office = College.query.filter_by(code=plan.office).first()
+        if office:
+            office_ids.add(office.id)
+    notify_offices(office_ids, title, message, notification_type,
+                   target_type='app', target_id=plan.id, action_stage=action_stage)
 
 
 def audit(entity_type, entity_id, action, details=None):
@@ -543,6 +622,7 @@ def initialize_database(apply_migrations=False):
                 apply_workflow_migrations(db)
                 migrate_revision_schema()
                 ensure_admin_account()
+                backfill_notification_links(sys.modules[__name__])
                 verify_database_schema()
             else:
                 verify_database_schema()
@@ -1089,6 +1169,7 @@ def register():
         db.session.add(PPMPNotification(
             recipient_id=admin.id, type="info", title="New account awaiting approval",
             message=f"{full_name} registered and needs an office and workflow role assignment.",
+            target_type='account', target_id=user.id, action_stage='PENDING',
         ))
     audit('account', user.id, 'ACCOUNT_REGISTERED', {'role': role, 'office': office, 'result': 'pending'})
     audit('account', user.id, 'ROLE_RESERVED', {'role': role})
@@ -1337,9 +1418,11 @@ def approve_pending_user(user_id):
             return jsonify({'error': 'This account is linked to an inactive operational office.'}), 409
         user.college_id = office.id
     user.account_status, user.is_active = 'ACTIVE', True
+    resolve_notification_tasks('account', user.id)
     db.session.add(PPMPNotification(
         recipient_id=user.id, type="success", title="Account approved",
         message="Your account was approved by the System Administrator. Welcome to the ISU Procurement Management System.",
+        target_type='profile', target_id=user.id,
     ))
     audit('account', user.id, 'ACCOUNT_APPROVED', {'role': user.role, 'office': user.office})
     db.session.commit()
@@ -1358,6 +1441,7 @@ def change_user_status(user_id):
         return jsonify({'error': 'Select a valid account status.'}), 400
     old_role = user.role
     user.account_status, user.is_active = status, False
+    resolve_notification_tasks('account', user.id)
     if status in {'ARCHIVED', 'REJECTED'}:
         user.released_role, user.role = old_role, None
     audit('account', user.id, 'ROLE_RELEASE' if user.role is None else 'STATUS_CHANGE',
@@ -1496,6 +1580,7 @@ def transition_ppmp(item_id):
     if target is None or (actor == 'office' and item.created_by != user.id):
         return jsonify({"error": "This PPMP transition is not allowed."}), 409
     previous = item.status
+    resolve_notification_tasks('ppmp_item', item.id)
     item.status = target
     if target == "Approved":
         item.approved_by, item.approved_at = user.id, datetime.utcnow()
@@ -1506,14 +1591,15 @@ def transition_ppmp(item_id):
         request_record = PPMPSubmissionRequest.query.filter_by(college_id=item.college_id, fiscal_year=item.fiscal_year, status="Requested").first()
         if request_record:
             request_record.status, request_record.submitted_at = "Submitted", datetime.utcnow()
-        notify_roles(("EO",), "PPMP submitted", f"A PPMP item from {item.college.code} is ready for EO review.", "info", item.id)
+        notify_roles(("EO",), "PPMP submitted", f"A PPMP item from {item.college.code} is ready for EO review.", "info", item.id, action_stage='EO')
     elif target == 'EO Review':
-        notify_roles(('PROCUREMENT',), 'PPMP ready for Procurement review', f'PPMP item {item.id} requires review.', 'info', item.id)
+        notify_roles(('PROCUREMENT',), 'PPMP ready for Procurement review', f'PPMP item {item.id} requires review.', 'info', item.id, action_stage='PROCUREMENT')
     elif target == 'Procurement Review':
-        notify_roles(('ADMIN',), 'PPMP pending final approval', f'PPMP item {item.id} requires final approval.', 'info', item.id)
-    elif target in {'Returned', 'Rejected', 'Approved'} and item.creator:
-        add_notification([item.creator], f'PPMP {target.lower()}', note or f'PPMP item {item.id} is now {target}.',
-                         'success' if target == 'Approved' else 'warning', item.id)
+        notify_roles(('ADMIN',), 'PPMP pending final approval', f'PPMP item {item.id} requires final approval.', 'info', item.id, action_stage='ADMIN')
+    notify_offices({item.college_id}, f'PPMP item {target.lower()}',
+                   f'{item.item_description} (FY {item.fiscal_year}) is now {target}.' + (f' Review note: {note}' if note else ''),
+                   'success' if target == 'Approved' else 'warning' if target in {'Returned', 'Rejected'} else 'info',
+                   extra_recipients=[item.creator])
     db.session.commit()
     return jsonify(item.to_dict())
 
@@ -2591,6 +2677,7 @@ def transition_ppmp_order(order_id):
         }), 409
 
     previous = order.status
+    resolve_notification_tasks('ppmp_order', order.id)
     order.status = target
     if action == 'return':
         order.return_stage = actor
@@ -2626,28 +2713,7 @@ def transition_ppmp_order(order_id):
         'return_stage': order.return_stage, 'reviewer_role': user.role,
         'items': [ppmp_request_report_item(item, order) for item in order.items],
     })
-    if target == 'Pending Admin Approval':
-        notify_roles(
-            ('ADMIN',), 'Wishlist request pending approval',
-            f'{order.reference_number} requires Administrator review.',
-        )
-    elif target == 'Submitted':
-        notify_roles(
-            ('PROCUREMENT',), 'Official PPMP ready for review',
-            f'{order.reference_number} requires Procurement review.',
-        )
-    elif target == 'EO Review':
-        notify_roles(('PROCUREMENT',), 'PPMP request ready for Procurement review',
-                     f'{order.reference_number} requires Procurement review.')
-    elif target == 'Procurement Review':
-        notify_roles(('ADMIN',), 'PPMP request pending Administrator approval',
-                     f'{order.reference_number} requires final review.')
-    if target in {'Returned', 'Rejected', 'Approved', 'Processing', 'Completed'} and order.requester:
-        add_notification(
-            [order.requester], f'Wishlist request {target.lower()}',
-            note or f'{order.reference_number} is now {target}.',
-            'success' if target in {'Approved', 'Completed'} else ('info' if target == 'Processing' else 'warning'),
-        )
+    notify_ppmp_order_update(order, action, actor, note)
     db.session.commit()
     return jsonify(order.to_dict())
 
@@ -2680,11 +2746,9 @@ def ppmp_order_comments(order_id):
     db.session.add(comment)
     db.session.flush()
     audit('wishlist_order', order.id, 'ADMIN_COMMENT_ADDED', {'comment_id': comment.id})
-    if order.requester:
-        add_notification(
-            [order.requester], 'Administrator Wishlist comment',
-            f'New comment on {order.reference_number}.',
-        )
+    notify_offices({order.office_id}, 'Administrator PPMP comment',
+                   f'{order.reference_number} (FY {order.fiscal_year}): {message}',
+                   extra_recipients=[order.requester], target_type='ppmp_order', target_id=order.id)
     db.session.commit()
     return jsonify(comment.to_dict()), 201
 
@@ -3826,6 +3890,8 @@ def consolidation_batches():
         audit('consolidation_batch', batch.id, 'CREATE', {
             'ppmp_item_ids': item_ids, 'sources': [source_snapshot(item) for item in items],
         })
+        notify_offices({item.college_id for item in items}, 'PPMP selected for APP consolidation',
+                       f'Admin included your approved PPMP items in consolidation batch #{batch.id}, FY {fiscal_year}.')
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -3905,7 +3971,11 @@ def annual_procurement_plans():
         })
         if extending and plan.status in {'Under Review', 'For Admin Approval', 'Submitted'}:
             notify_roles((expected_app_reviewer(plan),), 'APP batch added during review',
-                         f'APP FY {plan.fiscal_year} revision {plan.revision} includes new source items. Completed reviews remain recorded.')
+                         f'{app_notification_label(plan)} includes new source items and requires your review. Completed reviews remain recorded.',
+                         target_type='app', target_id=plan.id, action_stage=f'REVIEW:{expected_app_reviewer(plan)}')
+        notify_app_offices(plan, 'APP batch added' if extending else 'APP draft prepared',
+                           f'{app_notification_label(plan)} now includes approved PPMP items from your office or college. '
+                           f'Current status: {plan.status}.')
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -4090,6 +4160,11 @@ def update_app_item(app_id, item_id):
         'app_item_id': item.id, 'section_id': section.id,
         'note': str(data.get('note') or '').strip() or None,
     })
+    if allocation_update:
+        notify_app_offices(plan, 'APP office contributions updated',
+                           f'Admin revised the office quantities or budgets for {item.project_title} in '
+                           f'{app_notification_label(plan)}. The approved PPMP sources remain unchanged.',
+                           app_items=[item])
     db.session.commit()
     return jsonify(item.to_dict())
 
@@ -4113,6 +4188,10 @@ def update_app_contributions(app_id, item_id):
     app_audit_snapshot(plan, 'APP_CONTRIBUTIONS_UPDATED', {
         'app_item_id': item.id, 'note': str(data.get('note') or '').strip() or None,
     })
+    notify_app_offices(plan, 'APP office contributions updated',
+                       f'Admin revised the office quantities or budgets for {item.project_title} in '
+                       f'{app_notification_label(plan)}. The approved PPMP sources remain unchanged.',
+                       app_items=[item])
     db.session.commit()
     return jsonify(item.to_dict())
 
@@ -4133,6 +4212,13 @@ def create_app_comment(app_id):
     comment = APPComment(app_id=plan.id, app_item_id=item_id, author_id=user.id, message=message)
     db.session.add(comment)
     app_audit_snapshot(plan, 'APP_COMMENT_ADDED', {'app_item_id': item_id, 'message': message})
+    if user.role != 'ADMIN':
+        notify_roles(('ADMIN',), 'APP review comment',
+                     f'{app_notification_label(plan)}: {user.role} commented: {message}',
+                     target_type='app', target_id=plan.id)
+    notify_app_offices(plan, 'APP review comment',
+                       f'{app_notification_label(plan)}: {user.role} commented: {message}',
+                       app_items=[item for item in plan.items if item.id == item_id] if item_id else None)
     db.session.commit()
     return jsonify(comment.to_dict()), 201
 
@@ -4193,6 +4279,7 @@ def transition_app(app_id):
         plan.current_review_role = None
     else:
         return jsonify({'error': 'This APP transition is not allowed.'}), 409
+    resolve_notification_tasks('app', plan.id)
     plan.status = target
     db.session.flush()
     db.session.add(APPApproval(
@@ -4206,19 +4293,33 @@ def transition_app(app_id):
         'return_to_reviewer': plan.return_review_role, 'note': note,
     })
     if next_role:
-        notify_roles((next_role,), 'APP pending action',
-                     f'APP FY {plan.fiscal_year} revision {plan.revision} requires your action. {note or ""}'.strip())
-    if action == 'return':
-        source_creator_ids = {
-            allocation.source_ppmp_item.created_by
-            for item in plan.items for allocation in item.contributions
-            if allocation.source_ppmp_item and allocation.source_ppmp_item.created_by is not None
-        }
-        if source_creator_ids:
-            add_notification(User.query.filter(User.id.in_(source_creator_ids), User.is_active.is_(True)).all(),
-                             'APP office feedback requested',
-                             f'APP FY {plan.fiscal_year} was returned by {user.role}: {note}. '
-                             'Open your official PPMP record to send feedback to Admin.', 'warning')
+        task = 'correction using office feedback' if target == 'Returned' else 'review'
+        performed_action = ('resubmitted' if action == 'submit' and previous == 'Returned'
+                            else {'submit': 'submitted', 'approve': 'approved', 'return': 'returned'}[action])
+        notify_roles((next_role,), f'APP awaiting {next_role} {"correction" if target == "Returned" else "review"}',
+                     f'{app_notification_label(plan)} requires your {task} after {user.role} '
+                     f'{performed_action} it. '
+                     f'{note or ""}'.strip(), 'warning' if target == 'Returned' else 'info',
+                     target_type='app', target_id=plan.id,
+                     action_stage='CORRECTION' if target == 'Returned' else f'REVIEW:{next_role}')
+    progress = {
+        'submit': f'was {"resubmitted" if previous == "Returned" else "submitted"} by Admin for {next_role} review.',
+        'approve': (f'was approved by {user.role} and is awaiting {next_role} review.' if next_role
+                    else 'received final Administrator approval and is now finalized.'),
+        'return': f'was returned by {user.role}. Admin will correct it using office feedback. '
+                  'Open your official PPMP record to send feedback to Admin.',
+        'reject': f'was rejected by {user.role}.',
+        'finalize': 'has been finalized by Admin.',
+    }[action]
+    if next_role != 'ADMIN' and user.role != 'ADMIN':
+        notify_roles(('ADMIN',), f'APP {target.lower()}',
+                     f'{app_notification_label(plan)} {progress}' + (f' Review note: {note}' if note else ''),
+                     'warning' if target == 'Rejected' else 'info', target_type='app', target_id=plan.id)
+    notify_app_offices(plan, 'APP office feedback requested' if action == 'return' else f'APP {target.lower()}',
+                       f'{app_notification_label(plan)} {progress}' + (f' Review note: {note}' if note else ''),
+                       'warning' if target in {'Returned', 'Rejected'} else
+                       'success' if target == 'Finalized' else 'info',
+                       action_stage='OFFICE_FEEDBACK' if action == 'return' else None)
     db.session.commit()
     return jsonify(app_detail_dict(plan))
 
@@ -4269,8 +4370,15 @@ def official_ppmp_app_feedback(order_id):
         'source_order_id': order.id, 'office_id': order.office_id,
         'app_item_id': item_id, 'message': message,
     })
+    office_recipient_ids = db.session.query(User.id).filter(or_(
+        User.college_id == order.office_id,
+        User.office == order.office.code if order.office else User.college_id == order.office_id,
+    ))
+    resolve_notification_tasks('app', plan.id, action_stage='OFFICE_FEEDBACK',
+                               recipient_ids=office_recipient_ids)
     notify_roles(('ADMIN',), 'Office feedback on APP',
-                 f'{order.office.code if order.office else user.office} sent feedback for APP FY {plan.fiscal_year}: {message}')
+                 f'{order.office.code if order.office else user.office} sent feedback for APP FY {plan.fiscal_year}: {message}',
+                 target_type='app', target_id=plan.id)
     db.session.commit()
     return jsonify(comment.to_dict()), 201
 
@@ -4465,12 +4573,42 @@ def export_app_excel(app_id):
     )
 
 
-@app.route('/api/notifications')
+@app.route('/api/notifications', methods=['GET', 'DELETE'])
 @login_required
 def notifications():
     user = current_session_user()
-    query = PPMPNotification.query.filter_by(recipient_id=user.id).order_by(PPMPNotification.created_at.desc())
-    return jsonify([notification.to_dict() for notification in query.limit(100).all()])
+    query = PPMPNotification.query.filter_by(recipient_id=user.id)
+    if request.method == 'DELETE':
+        query.delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({'success': True})
+    rows = query.filter(PPMPNotification.resolved_at.is_(None)).order_by(
+        PPMPNotification.created_at.desc(), PPMPNotification.id.desc(),
+    ).all()
+    active = [payload for row in rows
+              if (payload := notification_payload(row, sys.modules[__name__], user)) is not None]
+    payload = active[:100]
+    if request.args.get('summary') == '1':
+        payload = {'notifications': payload, 'unread_count': sum(not row['is_read'] for row in active)}
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.route('/api/notifications/read', methods=['POST'])
+@login_required
+def read_notifications():
+    data = request.get_json(silent=True)
+    ids = data.get('ids') if isinstance(data, dict) else None
+    if (not isinstance(ids, list) or len(ids) > 100
+            or any(type(value) is not int or value <= 0 for value in ids)):
+        return jsonify({'error': 'Provide up to 100 notification IDs to mark as read.'}), 400
+    PPMPNotification.query.filter(
+        PPMPNotification.recipient_id == current_session_user().id,
+        PPMPNotification.id.in_(ids), PPMPNotification.is_read.is_(False),
+    ).update({'is_read': True, 'read_at': datetime.utcnow()}, synchronize_session=False)
+    db.session.commit()
+    return jsonify({'success': True})
 
 
 @app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
@@ -4481,8 +4619,26 @@ def read_notification(notification_id):
     if notification is None:
         return jsonify({'error': 'Notification not found.'}), 404
     notification.is_read, notification.read_at = True, datetime.utcnow()
+    data = request.get_json(silent=True) or {}
+    _, completed, stage = notification_context(notification, sys.modules[__name__], user)
+    if completed or (isinstance(data, dict) and data.get('opened') is True and not stage):
+        notification.resolved_at = datetime.utcnow()
     db.session.commit()
-    return jsonify(notification.to_dict())
+    return jsonify(dict(notification.to_dict(), removed=notification.resolved_at is not None))
+
+
+@app.route('/api/notifications/<int:notification_id>/target')
+@login_required
+def notification_target(notification_id):
+    user = current_session_user()
+    notification = PPMPNotification.query.filter_by(id=notification_id, recipient_id=user.id).first()
+    if notification is None:
+        return jsonify({'error': 'Notification not found.'}), 404
+    target, completed, stage = notification_context(notification, sys.modules[__name__], user)
+    response = jsonify({'target': None if completed else target, 'completed': completed,
+                        'action_required': bool(stage)})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.route('/api/admin/audit-log')

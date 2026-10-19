@@ -40,6 +40,14 @@ Admin prepares and submits → BAC Chairman → Budget Office → EO → Final A
 
 ## Local review
 
+### Live notifications
+
+- Notifications load for the signed-in recipient and refresh every five seconds while the page is visible.
+- Clicking opens the specific PPMP report, APP, office feedback section, or pending account registration.
+- Opening a review marks it read. Its notification stays until the required approval, return, rejection, or resubmission succeeds, then clears for all assigned recipients.
+- Informational notifications clear after they are opened. Existing notification messages are linked during the explicit database migration where their source can be identified.
+- Apply `python app.py --migrate-only` after backing up an existing database when installing the notification links update. It adds destination and completion fields without deleting messages or procurement records.
+
 Use the project virtual environment from `PPMP_System/ppmp`:
 
 ```powershell

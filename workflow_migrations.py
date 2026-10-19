@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 
 
 WORKFLOW_REQUIRED_COLUMNS = {
+    'ppmp_notifications': ('target_type', 'target_id', 'action_stage', 'resolved_at'),
     'ppmp_orders': ('workflow_official', 'return_stage'),
     'ppmp_records': ('source_order_id', 'ppmp_document_number'),
     'annual_procurement_plans': (
