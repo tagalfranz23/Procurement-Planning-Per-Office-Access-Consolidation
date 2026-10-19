@@ -4404,7 +4404,7 @@ async function submitWishlistRequest(button) {
   }
 }
 
-function appPlanActions(plan, { includeRecordActions = true } = {}) {
+function appPlanActions(plan, { includeRecordActions = true, includeFinalApproval = true, includeReturnAndReject = true } = {}) {
   if (!currentUser) return '';
   const buttons = includeRecordActions ? [`<button class="btn btn-primary btn-sm" type="button" onclick="openAPP(${plan.id},true)">Open</button>`] : [];
   if (includeRecordActions && hasClientPermission('app.export')) {
@@ -4418,9 +4418,11 @@ function appPlanActions(plan, { includeRecordActions = true } = {}) {
   const mayReview = plan.status === 'Under Review' && plan.expected_reviewer === currentUser.role;
   const adminApproval = currentUser.role === 'ADMIN' && plan.status === 'For Admin Approval';
   if (mayReview || adminApproval) {
-    buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionAPP(${plan.id},'approve',this)">${adminApproval ? 'Final Approve' : 'Approve'}</button>`);
-    buttons.push(`<button class="btn btn-ghost btn-sm" onclick="transitionAPP(${plan.id},'return',this)">Return to Admin</button>`);
-    buttons.push(`<button class="btn btn-danger btn-sm" onclick="transitionAPP(${plan.id},'reject',this)">Reject</button>`);
+    if (!adminApproval || includeFinalApproval) buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionAPP(${plan.id},'approve',this)">${adminApproval ? 'Final Approve' : 'Approve'}</button>`);
+    if (includeReturnAndReject) {
+      buttons.push(`<button class="btn btn-ghost btn-sm" onclick="transitionAPP(${plan.id},'return',this)">Return to Admin</button>`);
+      buttons.push(`<button class="btn btn-danger btn-sm" onclick="transitionAPP(${plan.id},'reject',this)">Reject</button>`);
+    }
   }
   if (currentUser.role === 'ADMIN' && plan.status === 'Approved') buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionAPP(${plan.id},'finalize',this)">Finalize Legacy APP</button>`);
   return buttons.join('');
@@ -4475,7 +4477,7 @@ function renderAPPWorkspace() {
     : '';
   document.getElementById('app-print-meta').textContent = `${plan.plan_type.replaceAll('_',' ')} - ${plan.office} - Fiscal Year ${plan.fiscal_year} - ${plan.status}${plan.revision ? ` - Revision ${plan.revision}` : ''}`;
   document.getElementById('selected-app-meta').textContent = `Status: ${plan.status} · ${sourceLabel} · ${preparedLabel}${reportedLabel}`;
-  document.getElementById('selected-app-actions').innerHTML = appPlanActions(plan, { includeRecordActions: false });
+  document.getElementById('selected-app-actions').innerHTML = appPlanActions(plan, { includeRecordActions: false, includeFinalApproval: false, includeReturnAndReject: false });
   document.getElementById('app-total-budget').textContent = `₱${fmt(plan.totals.overall)}`;
   document.getElementById('app-epa-total').textContent = `₱${fmt(plan.totals.early_procurement)}`;
   document.getElementById('app-cse-total').textContent = `₱${fmt(plan.totals.cse)}`;
