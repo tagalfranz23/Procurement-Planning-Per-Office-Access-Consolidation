@@ -1489,7 +1489,7 @@ td.center{text-align:center}
       <div class="form-group span2"><label class="form-label required" for="app-item-title">1. Project Title</label><textarea class="form-control" id="app-item-title" rows="2" maxlength="3000"></textarea></div>
       <div class="form-group"><label class="form-label required" for="app-item-unit">2. End-User / Implementing Unit</label><input class="form-control" id="app-item-unit" maxlength="200"></div>
       <div class="form-group"><label class="form-label required" for="app-item-description">3. General Description</label><select class="form-control" id="app-item-description"></select></div>
-      <div class="form-group"><label class="form-label required" for="app-item-mode">4. Mode of Procurement</label><select class="form-control" id="app-item-mode"></select></div>
+      <div class="form-group"><label class="form-label" for="app-item-mode">4. Mode of Procurement</label><select class="form-control" id="app-item-mode" disabled></select><div class="form-hint">Set by BAC Chairman during APP review.</div></div>
       <div class="form-group"><label class="form-label required" for="app-item-early">5. Early Procurement Activity?</label><select class="form-control" id="app-item-early"><option value="">Select Yes or No</option><option value="Yes">Yes</option><option value="No">No</option></select></div>
       <div class="form-group span2"><label class="form-label" for="app-item-criteria">6. Criteria for Bid Evaluation</label><textarea class="form-control" id="app-item-criteria" rows="2" maxlength="3000" placeholder="Including sustainability and domestic preference"></textarea></div>
       <div class="form-group"><label class="form-label" for="app-item-start">7. Start of Procurement Activity</label><input class="form-control" id="app-item-start" type="month"></div>
@@ -1572,6 +1572,7 @@ let selectedAPPId = null;
 let selectedAPPRecord = null;
 let editingAPPItemId = null;
 let editingAPPContributionItemId = null;
+const pendingAPPProcurementModes = new Map();
 let consolidationEligibleItems = [];
 let consolidationBatches = [];
 let ppmpReportReturnPanel = 'ppmp-request-records';
@@ -4495,6 +4496,42 @@ function renderAPPWorkspace() {
   }).join('') : '<div class="text-muted">No workflow actions.</div>';
 }
 
+function appProcurementModeKey(itemId) { return `${currentUser.id}:${selectedAPPId}:${itemId}`; }
+
+function rememberAPPProcurementMode(itemId, value) {
+  pendingAPPProcurementModes.set(appProcurementModeKey(itemId), value);
+}
+
+function renderAPPProcurementMode(item) {
+  const value = item.mode_of_procurement || '';
+  const savedValue = `<div>${escapeHtml(value) || '<span class="text-muted">To be set by BAC Chairman</span>'}</div>`;
+  if (currentUser.role !== 'BAC CHAIRMAN' || !item.can_set_procurement_mode) return savedValue;
+  const key = appProcurementModeKey(item.id);
+  const selectedMode = pendingAPPProcurementModes.has(key) ? pendingAPPProcurementModes.get(key) : value;
+  const options = (appMetadata.modes_of_procurement || []).map(mode => `<option value="${escapeHtml(mode)}"${mode === selectedMode ? ' selected' : ''}>${escapeHtml(mode)}</option>`).join('');
+  return `${savedValue}<div class="app-item-tools" style="flex-wrap:wrap"><select class="form-control" id="app-procurement-mode-${item.id}" style="max-width:100%" aria-label="Mode of Procurement for ${escapeHtml(item.project_title)}" onchange="rememberAPPProcurementMode(${item.id},this.value)"><option value=""${selectedMode === '' ? ' selected' : ''}>Select mode</option>${options}</select><button class="btn btn-primary btn-sm" type="button" onclick="saveAPPProcurementMode(${item.id},this)">Save</button></div>`;
+}
+
+async function saveAPPProcurementMode(itemId, button) {
+  const item = appItems().find(row => row.id === itemId);
+  if (currentUser.role !== 'BAC CHAIRMAN' || !item?.can_set_procurement_mode) return showToast('Only BAC Chairman may set the mode during the assigned APP review.', 'APP', 'warning');
+  const select = document.getElementById(`app-procurement-mode-${itemId}`);
+  const mode = select.value;
+  if (!mode) return showToast('Select a Mode of Procurement.', 'APP', 'warning');
+  const appId = selectedAPPId;
+  const key = appProcurementModeKey(itemId);
+  button.disabled = true;
+  select.disabled = true;
+  try {
+    const result = await apiFetch(`${API}/apps/${appId}/items/${itemId}/procurement-mode`, { method: 'PUT', body: JSON.stringify({ mode_of_procurement: mode }), loadingMessage: 'Saving Mode of Procurement...' });
+    if (pendingAPPProcurementModes.get(key) === mode) pendingAPPProcurementModes.delete(key);
+    if (selectedAPPId === appId) { selectedAPPRecord = result.app; renderAPPWorkspace(); }
+    await loadApps();
+    showToast('Mode of Procurement saved.', 'APP', 'success');
+  } catch (error) { showToast(error.message, 'APP', 'error'); }
+  finally { button.disabled = false; select.disabled = false; }
+}
+
 function renderAPPTable() {
   const plan = selectedAPPRecord, editable = selectedAPPEditable();
   const rows = [];
@@ -4505,7 +4542,7 @@ function renderAPPTable() {
       const contributionButton = (item.contributions || []).length ? `<button class="btn btn-primary btn-sm" type="button" onclick="openAPPContributions(${item.id})">Office Contributions</button>` : '';
       const itemEditable = editable || (currentUser.role === 'ADMIN' && item.can_edit);
       const tools = itemEditable ? `<div class="app-item-tools">${contributionButton}<button class="btn btn-ghost btn-sm" type="button" onclick="openAPPItemModal(${item.id})">Edit</button>${editable && !item.contributions?.length && plan.workflow_version !== 2 ? `<button class="btn btn-danger btn-sm" type="button" onclick="deleteAPPItem(${item.id},this)">Remove</button>` : ''}</div>` : `<div class="app-item-tools">${contributionButton}</div>`;
-      rows.push(`<tr${item.is_pending_completion ? ' class="app-pending-row"' : ''}><td>${escapeHtml(item.project_title)}${item.is_pending_completion ? '<div class="text-xs text-red">New batch item - Admin must complete this row before review.</div>' : ''}${item.quantity !== undefined ? `<div class="text-xs text-muted">${fmtNum(item.quantity)} ${escapeHtml(item.unit || item.unit_size || item.unit_of_measure || '')}</div>` : ''}${tools}</td><td>${escapeHtml(item.implementing_unit)}${(item.contributions || []).map(row => `<div class="text-xs">${escapeHtml(row.office_code || row.office_name)}: ${fmtNum(row.quantity)} ${escapeHtml(item.unit_size || '')} - &#8369; ${fmt(row.estimated_budget)}</div>`).join('')}</td><td>${escapeHtml(item.general_description)}</td><td>${escapeHtml(item.mode_of_procurement)}</td><td>${item.early_procurement_activity===true?'Yes':item.early_procurement_activity===false?'No':'<span class="text-red">Required</span>'}</td><td>${escapeHtml(item.bid_evaluation_criteria) || '<span class="text-red">Required before submission</span>'}</td><td>${item.schedule_as_needed ? 'As needed' : escapeHtml(item.procurement_start) || '<span class="text-red">Required</span>'}</td><td>${item.schedule_as_needed ? 'As needed' : escapeHtml(item.procurement_end) || '<span class="text-red">Required</span>'}</td><td>${escapeHtml(item.source_of_fund)}</td><td class="amount">₱${fmt(item.estimated_budget)}</td><td>${escapeHtml(item.procurement_strategy_tools)}</td><td>${escapeHtml(item.remarks)}</td></tr>`);
+      rows.push(`<tr${item.is_pending_completion ? ' class="app-pending-row"' : ''}><td>${escapeHtml(item.project_title)}${item.is_pending_completion ? '<div class="text-xs text-red">New batch item - Admin must complete this row before review.</div>' : ''}${item.quantity !== undefined ? `<div class="text-xs text-muted">${fmtNum(item.quantity)} ${escapeHtml(item.unit || item.unit_size || item.unit_of_measure || '')}</div>` : ''}${tools}</td><td>${escapeHtml(item.implementing_unit)}${(item.contributions || []).map(row => `<div class="text-xs">${escapeHtml(row.office_code || row.office_name)}: ${fmtNum(row.quantity)} ${escapeHtml(item.unit_size || '')} - &#8369; ${fmt(row.estimated_budget)}</div>`).join('')}</td><td>${escapeHtml(item.general_description)}</td><td>${renderAPPProcurementMode(item)}</td><td>${item.early_procurement_activity===true?'Yes':item.early_procurement_activity===false?'No':'<span class="text-red">Required</span>'}</td><td>${escapeHtml(item.bid_evaluation_criteria) || '<span class="text-red">Required before submission</span>'}</td><td>${item.schedule_as_needed ? 'As needed' : escapeHtml(item.procurement_start) || '<span class="text-red">Required</span>'}</td><td>${item.schedule_as_needed ? 'As needed' : escapeHtml(item.procurement_end) || '<span class="text-red">Required</span>'}</td><td>${escapeHtml(item.source_of_fund)}</td><td class="amount">₱${fmt(item.estimated_budget)}</td><td>${escapeHtml(item.procurement_strategy_tools)}</td><td>${escapeHtml(item.remarks)}</td></tr>`);
     }
     rows.push(`<tr class="app-total-row"><td colspan="9">TOTAL ${escapeHtml(section.name.toUpperCase())}</td><td class="amount">₱${fmt(section.total_budget)}</td><td colspan="2"></td></tr>`);
   }
@@ -4518,7 +4555,7 @@ function appMonthInput(value) { if (!value) return ''; if (/^\d{4}-\d{2}/.test(v
 function populateAPPItemSelects() {
   const fill=(id,values,label)=>document.getElementById(id).innerHTML=`<option value="">${label}</option>`+values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
   fill('app-item-description',appMetadata.general_descriptions||[],'Select description');
-  fill('app-item-mode',appMetadata.modes_of_procurement||[],'Select mode');
+  fill('app-item-mode',appMetadata.modes_of_procurement||[],'To be set by BAC Chairman');
   fill('app-item-fund',appMetadata.sources_of_fund||[],'Select source');
 }
 
@@ -4534,6 +4571,7 @@ function openAPPItemModal(itemId=null) {
   document.getElementById('app-item-unit').disabled = Boolean(item?.contributions?.length);
   document.getElementById('app-item-description').value = item?.general_description || '';
   document.getElementById('app-item-mode').value = item?.mode_of_procurement || '';
+  document.getElementById('app-item-mode').disabled = true;
   document.getElementById('app-item-early').value = item?.early_procurement_activity===true?'Yes':item?.early_procurement_activity===false?'No':'';
   document.getElementById('app-item-criteria').value = item?.bid_evaluation_criteria || '';
   document.getElementById('app-item-start').value = appMonthInput(item?.procurement_start);
@@ -4550,8 +4588,8 @@ function closeAPPItemModal() { document.getElementById('app-item-modal').classLi
 
 async function saveAPPItem(button) {
   button.disabled = true;
-  const payload = {section_id:+document.getElementById('app-item-section').value,project_title:document.getElementById('app-item-title').value,implementing_unit:document.getElementById('app-item-unit').value,general_description:document.getElementById('app-item-description').value,mode_of_procurement:document.getElementById('app-item-mode').value,early_procurement_activity:document.getElementById('app-item-early').value,bid_evaluation_criteria:document.getElementById('app-item-criteria').value,procurement_start:document.getElementById('app-item-start').value,procurement_end:document.getElementById('app-item-end').value,source_of_fund:document.getElementById('app-item-fund').value,estimated_budget:document.getElementById('app-item-budget').value,procurement_strategy_tools:document.getElementById('app-item-strategy').value,remarks:document.getElementById('app-item-remarks').value};
-  try { const path=editingAPPItemId?`${API}/apps/${selectedAPPId}/items/${editingAPPItemId}`:`${API}/apps/${selectedAPPId}/items`;await apiFetch(path,{method:editingAPPItemId?'PUT':'POST',body:JSON.stringify(payload),loadingMessage:'Saving all 12 APP columns…'});closeAPPItemModal();await Promise.all([openAPP(selectedAPPId,false),loadApps()]);showToast('APP draft item saved.','APP','success'); }
+  const payload = {section_id:+document.getElementById('app-item-section').value,project_title:document.getElementById('app-item-title').value,implementing_unit:document.getElementById('app-item-unit').value,general_description:document.getElementById('app-item-description').value,early_procurement_activity:document.getElementById('app-item-early').value,bid_evaluation_criteria:document.getElementById('app-item-criteria').value,procurement_start:document.getElementById('app-item-start').value,procurement_end:document.getElementById('app-item-end').value,source_of_fund:document.getElementById('app-item-fund').value,estimated_budget:document.getElementById('app-item-budget').value,procurement_strategy_tools:document.getElementById('app-item-strategy').value,remarks:document.getElementById('app-item-remarks').value};
+  try { const path=editingAPPItemId?`${API}/apps/${selectedAPPId}/items/${editingAPPItemId}`:`${API}/apps/${selectedAPPId}/items`;await apiFetch(path,{method:editingAPPItemId?'PUT':'POST',body:JSON.stringify(payload),loadingMessage:'Saving APP item...'});closeAPPItemModal();await Promise.all([openAPP(selectedAPPId,false),loadApps()]);showToast('APP draft item saved.','APP','success'); }
   catch(error){showToast(error.message,'APP Item','error')} finally{button.disabled=false}
 }
 

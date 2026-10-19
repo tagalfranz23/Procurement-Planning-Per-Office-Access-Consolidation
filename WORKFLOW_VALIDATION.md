@@ -42,3 +42,7 @@ Authentication functions were not changed as part of this workflow implementatio
 ## Existing requests
 
 Historical requests remain saved. If multiple historical requests cover the same office and year, Admin explicitly chooses **Set Official PPMP** for the correct existing record before it enters the new approval/consolidation workflow. This preserves the historical requests while enforcing one official PPMP for subsequent processing.
+
+## BAC procurement-mode ownership revision
+
+The APP Mode of Procurement is now assigned only by BAC Chairman. Static source review covered the role guard, Admin payload restrictions, submission versus approval validation, late-batch assignment tasks, and print controls. No automated tests or browser checks were run for this revision. It uses existing APP fields and source-details JSON, requires no new database migration, and does not rewrite existing saved modes or approved PPMP sources.

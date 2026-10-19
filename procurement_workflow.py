@@ -180,7 +180,9 @@ def materialize_batch_sources(plan, batch_sources, creator):
                 project_title=snapshot['item_description'],
                 implementing_unit=snapshot['office_code'] or snapshot['office_name'],
                 general_description=snapshot['procurement_type'],
-                mode_of_procurement=snapshot['mode_of_procurement'],
+                # The PPMP recommendation remains in the immutable snapshot and
+                # merge key. BAC Chairman sets the APP's procurement decision.
+                mode_of_procurement='',
                 early_procurement_activity=None, bid_evaluation_criteria=None,
                 procurement_start=date.fromisoformat(snapshot['procurement_start']) if snapshot['procurement_start'] else None,
                 procurement_end=date.fromisoformat(snapshot['procurement_end']) if snapshot['procurement_end'] else None,

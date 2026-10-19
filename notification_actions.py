@@ -107,6 +107,15 @@ def notification_context(notification, application, user):
             completed |= plan.status != 'Returned' or user.role != 'ADMIN'
         elif stage == 'OFFICE_FEEDBACK':
             completed |= plan.status != 'Returned'
+        elif stage == 'BAC_MODE':
+            pending_mode_ids = (plan.source_details or {}).get('pending_bac_mode_item_ids', [])
+            has_pending_mode = any(
+                item.id in pending_mode_ids and not str(item.mode_of_procurement or '').strip()
+                for item in plan.items
+            )
+            completed |= (user.role != 'BAC CHAIRMAN'
+                          or plan.status not in {'Submitted', 'Under Review', 'For Admin Approval'}
+                          or not has_pending_mode)
         elif stage and stage.startswith('REVIEW:'):
             role = stage.partition(':')[2]
             completed |= (plan.status not in {'Submitted', 'Under Review', 'For Admin Approval'}

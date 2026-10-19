@@ -3650,12 +3650,35 @@ def can_complete_added_app_item(user, plan, item):
                 and item.id in (plan.source_details or {}).get('pending_item_ids', []))
 
 
+def can_set_app_procurement_mode(user, plan, item):
+    """BAC owns this APP field, including new rows added after its review."""
+    return bool(
+        user and user.role == 'BAC CHAIRMAN' and has_permission(user, 'app.review')
+        and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}
+        and (expected_app_reviewer(plan) == 'BAC CHAIRMAN' or (
+            not item.mode_of_procurement
+            and item.id in (plan.source_details or {}).get('pending_bac_mode_item_ids', [])
+        ))
+    )
+
+
+def sync_app_mode_tasks(plan):
+    """Track BAC assignments separately from the fields Admin must complete."""
+    pending_ids = sorted(item.id for item in plan.items if not item.mode_of_procurement)
+    plan.source_details = {**(plan.source_details or {}), 'pending_bac_mode_item_ids': pending_ids}
+    resolve_notification_tasks('app', plan.id, action_stage='BAC_MODE')
+    if pending_ids and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}:
+        notify_roles(('BAC CHAIRMAN',), 'APP procurement modes need BAC assignment',
+                     f'{app_notification_label(plan)} has {len(pending_ids)} row(s) requiring your Mode of Procurement selection. '
+                     'Open the APP and save each selection before review can proceed.',
+                     target_type='app', target_id=plan.id, action_stage='BAC_MODE')
+
+
 def parse_app_item(data):
     text_fields = {
         'project_title': (3000, True),
         'implementing_unit': (200, True),
         'general_description': (120, True),
-        'mode_of_procurement': (255, True),
         'bid_evaluation_criteria': (3000, False),
         'source_of_fund': (120, True),
         'procurement_strategy_tools': (5000, False),
@@ -3671,8 +3694,6 @@ def parse_app_item(data):
         values[field] = value or None
     if values['general_description'] not in set(PPMPRecordItem.PROJECT_TYPES) | set(PPMP_ORDER_TYPES) | set(PPMPItem.TYPES):
         raise ValueError('Select a valid general project description.')
-    if values['mode_of_procurement'] not in set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS):
-        raise ValueError('Select a valid mode of procurement.')
     if values['source_of_fund'] not in set(PPMPRecordItem.FUND_SOURCES) | set(PPMP_ORDER_FUND_SOURCES):
         raise ValueError('Select a valid source of fund.')
     early_value = data.get('early_procurement_activity')
@@ -3690,10 +3711,12 @@ def parse_app_item(data):
     return values
 
 
-def app_item_validation_error(item, index=1):
+def app_item_validation_error(item, index=1, *, require_procurement_mode=True):
+    if (require_procurement_mode
+            and item.mode_of_procurement not in set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS)):
+        return f'BAC Chairman must select and save a valid Mode of Procurement for APP row {index}.'
     if (not item.project_title or not item.implementing_unit
                 or item.general_description not in set(PPMPRecordItem.PROJECT_TYPES) | set(PPMP_ORDER_TYPES) | set(PPMPItem.TYPES)
-                or item.mode_of_procurement not in set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS)
                 or item.early_procurement_activity is None
                 or not item.bid_evaluation_criteria
                 or item.source_of_fund not in set(PPMPRecordItem.FUND_SOURCES) | set(PPMP_ORDER_FUND_SOURCES)
@@ -3712,13 +3735,13 @@ def app_item_validation_error(item, index=1):
     return None
 
 
-def validate_app_for_submission(plan):
+def validate_app_for_submission(plan, *, require_procurement_mode=True):
     if not plan.sections:
         return 'Add at least one APP section before submitting.'
     if not plan.items:
         return 'Add at least one APP item before submitting.'
     for index, item in enumerate(plan.items, 1):
-        error = app_item_validation_error(item, index)
+        error = app_item_validation_error(item, index, require_procurement_mode=require_procurement_mode)
         if error:
             return error
     return None
@@ -3768,6 +3791,8 @@ def app_detail_dict(plan):
         ),
         'batch_ids': batch_ids,
     }
+    active_user = current_session_user() if has_request_context() else None
+    items_by_id = {item.id: item for item in plan.items}
     for section in result.get('sections', []):
         for row in section.get('items', []):
             row['schedule_as_needed'] = bool(row.get('contributions')) and all(
@@ -3777,6 +3802,7 @@ def app_detail_dict(plan):
             row['can_edit'] = result['can_edit'] or bool(
                 has_request_context() and current_session_user() and current_session_user().role == 'ADMIN'
                 and row['is_pending_completion'] and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'})
+            row['can_set_procurement_mode'] = can_set_app_procurement_mode(active_user, plan, items_by_id[row['id']])
     return result
 
 
@@ -4020,8 +4046,10 @@ def annual_procurement_plans():
         snapshots = materialize_app_items(plan, batch_sources, user)
         if extending and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}:
             pending = set((plan.source_details or {}).get('pending_item_ids', []))
-            pending.update(item.id for item in plan.items if item.id not in previous_item_ids and app_item_validation_error(item))
+            pending.update(item.id for item in plan.items if item.id not in previous_item_ids
+                           and app_item_validation_error(item, require_procurement_mode=False))
             plan.source_details = {**(plan.source_details or {}), 'pending_item_ids': sorted(pending)}
+        sync_app_mode_tasks(plan)
         app_audit_snapshot(plan, 'APP_BATCH_ADDED' if extending else 'APP_DRAFT_CREATED', {
             'consolidation_batch_id': batch.id,
             'source_ppmp_item_ids': source_ids, 'added_sources': snapshots,
@@ -4142,6 +4170,8 @@ def create_app_item(app_id):
     if plan.workflow_version == 2:
         return jsonify({'error': 'Add approved PPMP sources through a consolidation batch to retain office allocations.'}), 409
     data = request.get_json(silent=True) or {}
+    if 'mode_of_procurement' in data:
+        return jsonify({'error': 'Only BAC Chairman may set the APP Mode of Procurement during review.'}), 403
     section = APPSection.query.filter_by(id=data.get('section_id'), app_id=plan.id).first()
     if section is None:
         return jsonify({'error': 'Select a valid APP section.'}), 400
@@ -4149,10 +4179,11 @@ def create_app_item(app_id):
         values = parse_app_item(data)
     except ValueError as error:
         return jsonify({'error': str(error)}), 400
-    item = APPItem(app=plan, section=section, created_by=user.id, **values)
+    item = APPItem(app=plan, section=section, created_by=user.id, mode_of_procurement='', **values)
     db.session.add(item)
     db.session.flush()
     plan.revision = (plan.revision or 1) + 1
+    sync_app_mode_tasks(plan)
     app_audit_snapshot(plan, 'APP_ITEM_ADDED', {'app_item_id': item.id, 'section_id': section.id})
     db.session.commit()
     return jsonify(item.to_dict()), 201
@@ -4176,10 +4207,13 @@ def update_app_item(app_id, item_id):
         db.session.flush()
         db.session.expire(plan, ['items'])
         plan.revision = (plan.revision or 1) + 1
+        sync_app_mode_tasks(plan)
         app_audit_snapshot(plan, 'APP_ITEM_REMOVED', {'app_item_id': item_id, 'source_ppmp_item_id': source_id})
         db.session.commit()
         return jsonify({'success': True})
     data = request.get_json(silent=True) or {}
+    if 'mode_of_procurement' in data:
+        return jsonify({'error': 'Only BAC Chairman may set the APP Mode of Procurement during review.'}), 403
     if completing_new_item and 'contributions' in data:
         return jsonify({'error': 'Office allocations can be revised after the APP is returned. Complete the new row fields here.'}), 409
     section = APPSection.query.filter_by(id=data.get('section_id', item.section_id), app_id=plan.id).first()
@@ -4200,7 +4234,7 @@ def update_app_item(app_id, item_id):
     except ValueError as error:
         return jsonify({'error': str(error)}), 400
     if any(values[field] != getattr(item, field) for field in (
-        'project_title', 'general_description', 'mode_of_procurement',
+        'project_title', 'general_description',
         'procurement_start', 'procurement_end', 'source_of_fund',
     )):
         item.merge_key = None
@@ -4209,7 +4243,7 @@ def update_app_item(app_id, item_id):
     item.section_id = section.id
     if allocation_update:
         apply_contribution_update(item, allocation_update)
-    if completing_new_item and not app_item_validation_error(item):
+    if completing_new_item and not app_item_validation_error(item, require_procurement_mode=False):
         plan.source_details = {
             **(plan.source_details or {}),
             'pending_item_ids': [value for value in (plan.source_details or {}).get('pending_item_ids', []) if value != item.id],
@@ -4226,6 +4260,43 @@ def update_app_item(app_id, item_id):
                            app_items=[item])
     db.session.commit()
     return jsonify(item.to_dict())
+
+
+@app.route('/api/apps/<int:app_id>/items/<int:item_id>/procurement-mode', methods=['PUT'])
+@roles_required('BAC CHAIRMAN')
+def set_app_procurement_mode(app_id, item_id):
+    plan = AnnualProcurementPlan.query.filter_by(id=app_id).with_for_update().first()
+    item = APPItem.query.filter_by(id=item_id, app_id=app_id).first()
+    user = current_session_user()
+    if plan is None or item is None:
+        return jsonify({'error': 'APP item not found.'}), 404
+    if not can_set_app_procurement_mode(user, plan, item):
+        return jsonify({'error': 'BAC Chairman may set procurement modes during BAC review, or for pending new rows during a later review stage.'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'mode_of_procurement'}:
+        return jsonify({'error': 'Provide only the Mode of Procurement for this APP row.'}), 400
+    mode = data['mode_of_procurement']
+    if (not isinstance(mode, str) or mode.strip() not in
+            set(APP_MODES_OF_PROCUREMENT) | set(PPMP_REPORT_PROCUREMENT_METHODS)):
+        return jsonify({'error': 'Select a valid Mode of Procurement.'}), 400
+    mode = mode.strip()
+    previous_mode = item.mode_of_procurement
+    item.mode_of_procurement = mode
+    if previous_mode != mode:
+        # Future sources may join only if their recommendation still matches
+        # BAC's APP decision and all other original merge fields are unchanged.
+        if not item.contributions or any(
+                row.source_snapshot.get('mode_of_procurement') != mode for row in item.contributions):
+            item.merge_key = None
+    plan.revision = (plan.revision or 1) + 1
+    sync_app_mode_tasks(plan)
+    app_audit_snapshot(plan, 'APP_PROCUREMENT_MODE_SET', {
+        'app_item_id': item.id, 'previous_mode': previous_mode,
+        'mode_of_procurement': mode, 'reviewer_role': user.role,
+        'continuing_reviewer': expected_app_reviewer(plan),
+    })
+    db.session.commit()
+    return jsonify({'ok': True, 'app': app_detail_dict(plan)})
 
 
 @app.route('/api/apps/<int:app_id>/items/<int:item_id>/contributions', methods=['PUT'])
@@ -4298,7 +4369,7 @@ def transition_app(app_id):
     if action == 'submit':
         if not can_edit_app(user, plan) or not has_permission(user, 'app.submit'):
             return jsonify({'error': 'Only Admin may complete and submit an APP while Draft or Returned.'}), 403
-        validation_error = validate_app_for_submission(plan)
+        validation_error = validate_app_for_submission(plan, require_procurement_mode=False)
         if validation_error:
             return jsonify({'error': validation_error}), 400
     expected = expected_app_reviewer(plan)
@@ -4317,7 +4388,7 @@ def transition_app(app_id):
         if action == 'approve':
             validation_error = validate_app_for_submission(plan)
             if validation_error:
-                return jsonify({'error': f'Admin must complete the APP before approval. {validation_error}'}), 409
+                return jsonify({'error': f'The APP must be complete before approval. {validation_error}'}), 409
             approved_roles = {
                 row.reviewer_role or (row.performer.role if row.performer else None)
                 for row in plan.approvals if row.action == 'APPROVE'
@@ -4341,6 +4412,7 @@ def transition_app(app_id):
     resolve_notification_tasks('app', plan.id)
     plan.status = target
     db.session.flush()
+    sync_app_mode_tasks(plan)
     db.session.add(APPApproval(
         app=plan, action=action.upper(), performed_by=user.id, reviewer_role=user.role,
         note=note, snapshot=app_snapshot(plan),

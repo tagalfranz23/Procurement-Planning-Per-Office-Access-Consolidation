@@ -35,9 +35,13 @@ Implemented and reviewed locally. The user authorized publishing this workflow a
 Admin prepares and submits → BAC Chairman → Budget Office → EO → Final Admin approval.
 
 - Final Admin approval finalizes the APP.
+- BAC Chairman alone selects and saves the APP Mode of Procurement. Admin prepares the remaining fields and submits without assigning this field; all review approvals require valid saved modes. The restriction applies in the UI and API, including Admin accounts.
+- New APP rows begin without a procurement mode. The approved PPMP recommendation stays in the original source snapshot. Existing saved APP modes are preserved and can be revised by BAC during BAC review.
+- For new rows added after BAC review, BAC receives a procurement-mode assignment notification and can save those pending modes while the APP remains with its current reviewer. Completed approvals are retained. Mode changes are recorded with the BAC account, revision, and APP snapshot.
 - A return requires a comment. Admin edits using office feedback and resubmits to the returning reviewer.
 - An additional batch joins an existing APP while it is being reviewed. Completed reviews are retained; new items proceed from the current review stage.
 - Missing APP-only fields on newly added rows must be completed before the current reviewer can approve.
+- Admin completes the new row's general fields; BAC completes its Mode of Procurement. BAC controls and unsaved selections are excluded from print preview, which shows saved values.
 - Batches received after final approval create a supplemental APP linked to the annual APP.
 - History records batch additions, corrections, comments, review roles, and the exact item snapshot at each approval.
 - Final APPs support PDF, Excel, and print preview, including contribution details.
