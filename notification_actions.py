@@ -80,6 +80,8 @@ def notification_context(notification, application, user):
         document = db.session.get(model, target_id)
         if document is None:
             return destination, True, stage
+        if kind == 'ppmp_record' and application.is_deleted_legacy_ppmp_record(document):
+            return destination, True, stage
         office_id = document.college_id if kind == 'ppmp_item' else document.office_id
         permission = 'ppmp.view' if kind == 'ppmp_item' else 'ppmp.report'
         completed |= not application.has_permission(user, permission)
@@ -96,6 +98,8 @@ def notification_context(notification, application, user):
         if kind == 'ppmp_item':
             order_row = PPMPOrderItem.query.filter_by(ppmp_item_id=document.id).first()
             record_row = None if order_row else PPMPRecordItem.query.filter_by(ppmp_item_id=document.id).first()
+            if record_row and application.is_deleted_legacy_ppmp_record(record_row.record):
+                record_row = None
             destination = ({'kind': 'ppmp_order', 'id': order_row.order_id} if order_row else
                            {'kind': 'ppmp_record', 'id': record_row.ppmp_record_id} if record_row else
                            {'kind': 'ppmp_dashboard', 'id': document.id})

@@ -4043,17 +4043,22 @@ async function deletePPMPRecord(recordId, button) {
   const record = ppmpRecords.find(row => row.id === selectedId);
   if (!record?.can_delete || deletedPPMPRecordReferences.has(record.reference_number)) return;
   const reference = record.reference_number;
+  const legacyDocument = reference.startsWith('LEGACY-PPMP-');
+  const documentTitle = legacyDocument ? 'PPMP Document' : 'PPMP Draft';
   const rowCount = Number(record.item_count || 0);
-  if (!confirm(`Delete ${reference} and its ${fmtNum(rowCount)} draft Wishlist row(s)? This cannot be undone.`)) return;
+  const confirmation = legacyDocument
+    ? `Delete ${reference} from PPMP Documents? The original PPMP requests, indicative copies, and APP records will be kept.`
+    : `Delete ${reference} and its ${fmtNum(rowCount)} draft Wishlist row(s)? This cannot be undone.`;
+  if (!confirm(confirmation)) return;
   deletingPPMPRecordIds.add(selectedId);
   button.disabled = true;
   button.textContent = 'Deleting...';
   try {
-    await apiFetch(`${API}/ppmp-records/${selectedId}`, { method: 'DELETE', body: JSON.stringify({ reference_number: reference }), loadingMessage: 'Deleting PPMP draft...' });
+    await apiFetch(`${API}/ppmp-records/${selectedId}`, { method: 'DELETE', body: JSON.stringify({ reference_number: reference }), loadingMessage: legacyDocument ? 'Deleting legacy PPMP document...' : 'Deleting PPMP draft...' });
   } catch (error) {
     deletingPPMPRecordIds.delete(selectedId);
     renderPPMPRecordList();
-    showToast(error.message, 'Delete PPMP Draft', 'error');
+    showToast(error.message, `Delete ${documentTitle}`, 'error');
     return;
   }
 
@@ -4078,12 +4083,12 @@ async function deletePPMPRecord(recordId, button) {
     resetPPMPItemForm();
   }
   renderPPMPRecordList();
-  showToast(`${reference} and its draft Wishlist rows were deleted.`, 'PPMP Draft', 'success');
+  showToast(legacyDocument ? `${reference} was removed from PPMP Documents. Original PPMP requests, indicative copies, and APP records were kept.` : `${reference} and its draft Wishlist rows were deleted.`, documentTitle, 'success');
   const refreshed = await Promise.allSettled([
     loadPPMPPlanning(), loadPPMPDashboard(), loadPPMPRequests(),
   ]);
   if (refreshed.some(result => result.status === 'rejected')) {
-    showToast('The draft was deleted, but some lists could not be refreshed. Refresh the page to load the latest records.', 'PPMP Draft', 'warning');
+    showToast(legacyDocument ? 'The legacy document was removed, but some lists could not be refreshed. Refresh the page to load the latest records.' : 'The draft was deleted, but some lists could not be refreshed. Refresh the page to load the latest records.', documentTitle, 'warning');
   }
 }
 

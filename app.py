@@ -1627,13 +1627,46 @@ def ppmp_comments(item_id):
     return jsonify(comment.to_dict()), 201
 
 
+def is_legacy_ppmp_document(record):
+    return bool(record and record.reference_number.startswith('LEGACY-PPMP-') and record.source_order_id is None)
+
+
+def is_deleted_legacy_ppmp_record(record):
+    return bool(is_legacy_ppmp_document(record) and WorkflowAuditLog.query.filter_by(
+        entity_type='ppmp_record', entity_id=record.id, action='PPMP_LEGACY_DOCUMENT_DELETED',
+    ).first())
+
+
+def visible_ppmp_records():
+    deleted_ids = db.session.query(WorkflowAuditLog.entity_id).filter(
+        WorkflowAuditLog.entity_type == 'ppmp_record',
+        WorkflowAuditLog.action == 'PPMP_LEGACY_DOCUMENT_DELETED',
+    )
+    return PPMPRecord.query.filter(~PPMPRecord.id.in_(deleted_ids))
+
+
+def can_delete_legacy_ppmp_record(user, record):
+    return bool(
+        user and user.is_active and user.account_status == 'ACTIVE'
+        and has_permission(user, 'ppmp.record.edit') and is_legacy_ppmp_document(record)
+        and (user.role == 'ADMIN' or (
+            is_ppmp_office_role(user.role) and user.college_id == record.office_id
+            and record.prepared_by == user.id and has_permission(user, 'ppmp.record.create')
+        ))
+    )
+
+
 def can_access_ppmp_record(user, record):
+    if user is None or is_deleted_legacy_ppmp_record(record):
+        return False
     if user.role in {'ADMIN', 'EO', 'AA', 'PROCUREMENT', 'BUDGET'}:
         return True
     return bool(user.college_id and user.college_id == record.office_id)
 
 
 def can_edit_ppmp_record(user, record):
+    if is_deleted_legacy_ppmp_record(record):
+        return False
     if record.source_order_id:
         return bool(user and (user.role == 'ADMIN' or (
             user.college_id == record.office_id and record.prepared_by == user.id
@@ -1647,7 +1680,9 @@ def can_edit_ppmp_record(user, record):
 
 
 def can_delete_ppmp_record(user, record):
-    """Permit deletion only of the preparer's independent, unused draft document."""
+    """Remove legacy display documents, or the preparer's independent unused draft."""
+    if is_legacy_ppmp_document(record):
+        return can_delete_legacy_ppmp_record(user, record) and not is_deleted_legacy_ppmp_record(record)
     if (user is None or not user.is_active or user.account_status != 'ACTIVE'
             or not has_permission(user, 'ppmp.record.create')
             or not has_permission(user, 'ppmp.record.edit')
@@ -1854,7 +1889,7 @@ def ppmp_records():
     if request.method == 'GET':
         if not has_permission(user, 'ppmp.record.view'):
             return jsonify({'error': 'You do not have permission to view PPMP records.'}), 403
-        query = PPMPRecord.query
+        query = visible_ppmp_records()
         if is_ppmp_office_role(user.role):
             if not user.college_id:
                 return jsonify([])
@@ -1930,7 +1965,7 @@ def ppmp_records():
 @login_required
 def ppmp_record_detail(record_id):
     record = db.session.get(PPMPRecord, record_id)
-    if record is None:
+    if record is None or is_deleted_legacy_ppmp_record(record):
         return jsonify({'error': 'PPMP record not found.'}), 404
     user = current_session_user()
     if not can_access_ppmp_record(user, record):
@@ -1951,7 +1986,7 @@ def delete_ppmp_record(record_id):
     if record is None:
         return jsonify({'error': 'PPMP record not found.'}), 404
     user = current_session_user()
-    if not (
+    if not can_delete_legacy_ppmp_record(user, record) and not (
         is_ppmp_office_role(user.role)
         and user.college_id == record.office_id
         and record.prepared_by == user.id
@@ -1965,6 +2000,8 @@ def delete_ppmp_record(record_id):
         return jsonify({'error': 'Provide the confirmed PPMP document reference number.'}), 400
     if data['reference_number'] != record.reference_number:
         return jsonify({'error': 'This PPMP document has changed. Refresh the documents list before deleting.'}), 409
+    if is_deleted_legacy_ppmp_record(record):
+        return jsonify({'deleted': record_id, 'reference_number': record.reference_number, 'soft_deleted': True})
     PPMPRecordItem.query.filter_by(ppmp_record_id=record.id).order_by(
         PPMPRecordItem.id,
     ).with_for_update().all()
@@ -1974,6 +2011,24 @@ def delete_ppmp_record(record_id):
                      'procurement records, comments, or review history can be deleted.'
         }), 409
     reference_number = record.reference_number
+    if is_legacy_ppmp_document(record):
+        # Retain the historical source rows used by requests and APP snapshots;
+        # the audit marker removes this display document persistently.
+        audit('ppmp_record', record.id, 'PPMP_LEGACY_DOCUMENT_DELETED', {
+            'reference_number': reference_number,
+            'office_id': record.office_id, 'fiscal_year': record.fiscal_year,
+            'item_count': len(record.items),
+            'retained_source_item_ids': sorted({
+                value for item in record.items
+                for value in (item.ppmp_item_id, item.legacy_ppmp_item_id) if value is not None
+            }),
+        })
+        resolve_notification_tasks('ppmp_record', record.id)
+        db.session.commit()
+        return jsonify({
+            'deleted': record_id, 'reference_number': reference_number, 'soft_deleted': True,
+            'message': 'Legacy PPMP document deleted. Original procurement records are retained.',
+        })
     audit('ppmp_record', record.id, 'PPMP_DRAFT_DELETED', {
         'reference_number': reference_number,
         'office_id': record.office_id,
@@ -2204,7 +2259,7 @@ def ppmp_submission_requests():
         results = []
         for submission_request in query.order_by(PPMPSubmissionRequest.created_at.desc()).all():
             result = submission_request.to_dict()
-            record = PPMPRecord.query.filter_by(submission_request_id=submission_request.id).first()
+            record = visible_ppmp_records().filter_by(submission_request_id=submission_request.id).first()
             result['ppmp_record_id'] = record.id if record else None
             result['ppmp_reference_number'] = record.reference_number if record else None
             result['ppmp_status'] = record.status if record else None
@@ -2397,6 +2452,8 @@ def create_order_from_ppmp_wishlist(user, office, data):
     record = db.session.get(PPMPRecord, record_ids.pop())
     if record is None or record.office_id != office.id:
         return jsonify({'error': 'You cannot request items from another office\'s PPMP.'}), 403
+    if is_deleted_legacy_ppmp_record(record):
+        return jsonify({'error': 'This legacy PPMP document has been deleted. Use an available approved PPMP document.'}), 409
     if record.status != 'Approved':
         return jsonify({'error': 'Wishlist items can only be requested after the PPMP is approved.'}), 409
     if any(item.item_status == 'Removed' or not item.ppmp_item_id for item in source_items):
@@ -3587,7 +3644,7 @@ def ppmp_dashboard_data():
         request_query = request_query.filter_by(college_id=user.college_id)
     request_counts = {status: request_query.filter_by(status=status).count()
                       for status in PPMPSubmissionRequest.STATUSES}
-    record_query = PPMPRecord.query
+    record_query = visible_ppmp_records()
     if is_ppmp_office_role(user.role):
         record_query = record_query.filter_by(office_id=user.college_id)
     records = record_query.order_by(PPMPRecord.updated_at.desc()).all()
