@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from models import (
     AnnualProcurementPlan, APPItem, APPItemContribution, PPMPItem, PPMPNotification,
-    OfficialPPMP, PPMPOrder, PPMPOrderItem, PPMPRecord, PPMPRecordItem, User, db,
+    PPMPOrder, PPMPOrderItem, PPMPRecord, PPMPRecordItem, User, db,
 )
 
 
@@ -93,9 +93,6 @@ def notification_context(notification, application, user):
             completed |= document.status not in statuses.get(stage, set())
             if stage != 'CREATOR':
                 completed |= user.role != stage
-            if kind == 'ppmp_order' and not document.workflow_official:
-                official = OfficialPPMP.query.filter_by(office_id=office_id, fiscal_year=document.fiscal_year).first()
-                completed |= bool(official and official.source_order_id != document.id)
         if kind == 'ppmp_item':
             order_row = PPMPOrderItem.query.filter_by(ppmp_item_id=document.id).first()
             record_row = None if order_row else PPMPRecordItem.query.filter_by(ppmp_item_id=document.id).first()

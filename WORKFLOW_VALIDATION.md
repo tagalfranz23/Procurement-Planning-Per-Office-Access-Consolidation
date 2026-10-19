@@ -4,7 +4,7 @@ The revised workflow is implemented. The user authorized publishing the workflow
 
 ## Passed checks
 
-The checks below describe the workflow implementation before the subsequent live notification/navigation changes. Tests have not been rerun for those follow-up changes. The local database was backed up before applying the additive notification links migration.
+The checks below describe the workflow implementation before the subsequent live notification/navigation and returned legacy PPMP correction changes. Tests have not been rerun for those follow-up changes. The local database was backed up before applying the additive notification links migration. The return/correction revision requires no new database migration and does not rewrite existing PPMPs.
 
 - 34 automated checks: 17 official PPMP/copy tests, 13 APP/consolidation tests, and 4 startup tests.
 - 17 Edge browser checks, including rendered JavaScript parsing, designation of historical requests, official draft creation and submission, approved-record locking, independent copy editing, Admin-only consolidation, merged office contributions, late batches retaining the Budget reviewer, new-row completion during review, and browser PDF print output for both PPMP and APP.

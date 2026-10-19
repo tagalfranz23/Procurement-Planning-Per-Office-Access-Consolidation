@@ -210,6 +210,8 @@ def configured_roles():
 
 
 def is_ppmp_office_role(role):
+    if role in ROLE_PERMISSIONS:
+        return False
     return role in PPMP_OFFICE_ROLES or role in {office.code for office in College.query.filter_by(is_active=True).all()}
 
 
@@ -2626,6 +2628,24 @@ def ppmp_orders():
     return jsonify(order.to_dict()), 201
 
 
+def ppmp_order_return_reviewer(order):
+    """Recover the returning reviewer for historical records without return_stage."""
+    if order.return_stage in {'ADMIN', 'PROCUREMENT'}:
+        return order.return_stage
+    events = WorkflowAuditLog.query.filter(
+        WorkflowAuditLog.entity_type == 'ppmp_order', WorkflowAuditLog.entity_id == order.id,
+        WorkflowAuditLog.action.in_(['WISHLIST_REQUEST_RETURNED', 'PPMP_RETURNED', 'RETURN']),
+    ).order_by(WorkflowAuditLog.id.desc()).all()
+    for event in events:
+        role = (event.details or {}).get('reviewer_role') or (event.performer.role if event.performer else None)
+        if role in {'ADMIN', 'PROCUREMENT'}:
+            return role
+        if role in {'EO', 'AA'}:
+            return 'PROCUREMENT'
+    # Historical Wishlist requests were reviewed and returned by Admin.
+    return 'ADMIN'
+
+
 @app.route('/api/ppmp-orders/<int:order_id>/transition', methods=['POST'])
 @login_required
 def transition_ppmp_order(order_id):
@@ -2647,9 +2667,8 @@ def transition_ppmp_order(order_id):
     actor = 'office' if is_ppmp_office_role(user.role) else ('EO' if user.role == 'AA' else user.role)
     if actor == 'office' and order.requested_by != user.id:
         return jsonify({'error': 'Only the creator can resubmit this PPMP.'}), 403
-    if action in {'submit', 'approve'} and not order.workflow_official:
-        return jsonify({'error': 'Admin must designate this historical record as the official PPMP before it can continue through review.'}), 409
-    resume_status = 'Pending Admin Approval' if order.return_stage == 'ADMIN' else 'Submitted'
+    returning_reviewer = ppmp_order_return_reviewer(order) if order.status == 'Returned' else None
+    resume_status = 'Pending Admin Approval' if returning_reviewer == 'ADMIN' else 'Submitted'
     transitions = {
         ('office', 'Draft', 'submit'): 'Submitted',
         ('office', 'Returned', 'submit'): resume_status,
@@ -2668,12 +2687,24 @@ def transition_ppmp_order(order_id):
         ('ADMIN', 'Approved', 'process'): 'Processing',
         ('ADMIN', 'Processing', 'complete'): 'Completed',
     }
+    if not order.workflow_official:
+        transitions[('ADMIN', 'Requested', 'return')] = 'Returned'
+        transitions[('ADMIN', 'Returned', 'return')] = 'Returned'
     target = transitions.get((actor, order.status, action))
     if target is None:
         return jsonify({'error': 'This Wishlist request transition is not allowed.'}), 409
-    if action in {'submit', 'approve'} and not ppmp_request_report_is_complete(order):
+    auto_returned = False
+    missing_fields = ppmp_request_report_missing_fields(order) if action in {'submit', 'approve'} else []
+    if action == 'approve' and actor == 'ADMIN' and missing_fields:
+        action, target, auto_returned = 'return', 'Returned', True
+        summary = '; '.join(f'{row["item_name"]}: {", ".join(row["fields"])}' for row in missing_fields[:10])
+        note = (f'Returned for completion. {summary}' + (f' Review note: {note}' if note else ''))[:5000]
+    if not order.workflow_official and ((action == 'approve' and target == 'Approved') or (action == 'submit' and order.status != 'Returned')):
+        return jsonify({'error': 'Admin must designate this historical record as the official PPMP before approval. A Returned record may be corrected and resubmitted to its reviewer.'}), 409
+    if action in {'submit', 'approve'} and missing_fields:
         return jsonify({
-            'error': 'Complete PPMP Report Columns 2 and 4 through 9, with valid dates, before submitting or approving.'
+            'error': 'Complete all required PPMP report fields and valid dates before resubmitting.',
+            'missing_fields': missing_fields,
         }), 409
 
     previous = order.status
@@ -2684,6 +2715,7 @@ def transition_ppmp_order(order_id):
     elif action == 'approve':
         order.return_stage = None
     if action == 'submit':
+        order.return_stage = returning_reviewer
         order.submitted_at = datetime.utcnow()
     if note:
         order.admin_note = note
@@ -2711,11 +2743,12 @@ def transition_ppmp_order(order_id):
     audit('ppmp_order', order.id, audit_action, {
         'from': previous, 'to': target, 'materialized_ppmp_items': materialized,
         'return_stage': order.return_stage, 'reviewer_role': user.role,
+        'automatic_return_for_incomplete_report': auto_returned,
         'items': [ppmp_request_report_item(item, order) for item in order.items],
     })
     notify_ppmp_order_update(order, action, actor, note)
     db.session.commit()
-    return jsonify(order.to_dict())
+    return jsonify(dict(order.to_dict(), auto_returned=auto_returned))
 
 
 @app.route('/api/ppmp-orders/<int:order_id>/comments', methods=['GET', 'POST'])
@@ -2903,12 +2936,19 @@ def ppmp_request_report_item(item, order):
 
 
 def ppmp_request_report_payload(order, user):
+    missing_fields = ppmp_request_report_missing_fields(order)
+    editable = can_edit_official_ppmp(user, order)
     return {
         'id': order.id,
         'source_type': 'official',
         'reference_number': order.reference_number,
         'status': order.status,
-        'return_stage': order.return_stage,
+        'return_stage': ppmp_order_return_reviewer(order) if order.status == 'Returned' else order.return_stage,
+        'return_note': order.admin_note if order.status == 'Returned' else None,
+        'requester_name': order.requester.full_name if order.requester else '',
+        'can_submit': editable and (order.workflow_official or order.status == 'Returned'),
+        'is_complete': not missing_fields,
+        'missing_fields': missing_fields,
         'workflow_official': bool(order.workflow_official),
         'is_official': bool(order.workflow_official),
         'requested_by': order.requested_by,
@@ -2924,7 +2964,7 @@ def ppmp_request_report_payload(order, user):
         'end_user_or_implementing_unit': (
             order.office.name if order.office and order.office.name else order.office.code if order.office else ''
         ),
-        'editable': can_edit_official_ppmp(user, order),
+        'editable': editable,
         'procurement_types': PPMP_ORDER_TYPES,
         'procurement_methods': PPMP_REPORT_PROCUREMENT_METHODS,
         'fund_sources': PPMP_ORDER_FUND_SOURCES,
@@ -2935,19 +2975,38 @@ def ppmp_request_report_payload(order, user):
     }
 
 
+def ppmp_request_report_missing_fields(order):
+    if not order.items:
+        return [{'item_id': None, 'item_name': 'PPMP', 'fields': ['at least one requested item']}]
+    errors = []
+    for item in order.items:
+        fields = []
+        for valid, label in (
+            (bool((item.item_name or '').strip()), 'item description'),
+            (item.project_type in PPMP_ORDER_TYPES, 'project type'),
+            (bool(item.quantity is not None and item.quantity > 0), 'quantity greater than zero'),
+            (bool((item.unit or '').strip()), 'unit / size'),
+            (item.procurement_method in PPMP_REPORT_PROCUREMENT_METHODS, 'recommended procurement mode'),
+            (item.pre_procurement_conference is not None, 'pre-procurement conference (Yes/No)'),
+            (item.procurement_start is not None, 'procurement start'),
+            (item.procurement_end is not None, 'procurement end'),
+            (item.delivery_period is not None, 'expected delivery'),
+            (item.source_of_funds in PPMP_ORDER_FUND_SOURCES, 'source of funds'),
+            (bool(item.estimated_budget is not None and item.estimated_budget >= 0), 'estimated budget'),
+        ):
+            if not valid:
+                fields.append(label)
+        if item.procurement_start and item.procurement_end and item.procurement_end < item.procurement_start:
+            fields.append('procurement end on or after procurement start')
+        if item.procurement_end and item.delivery_period and item.delivery_period < item.procurement_end:
+            fields.append('delivery on or after procurement end')
+        if fields:
+            errors.append({'item_id': item.id, 'item_name': item.item_name or 'Unnamed item', 'fields': fields})
+    return errors
+
+
 def ppmp_request_report_is_complete(order):
-    return bool(order.items) and all(
-        item.project_type in PPMP_ORDER_TYPES
-        and item.procurement_method in PPMP_REPORT_PROCUREMENT_METHODS
-        and item.pre_procurement_conference is not None
-        and item.procurement_start is not None
-        and item.procurement_end is not None
-        and item.delivery_period is not None
-        and item.source_of_funds in PPMP_ORDER_FUND_SOURCES
-        and item.procurement_end >= item.procurement_start
-        and item.delivery_period >= item.procurement_end
-        for item in order.items
-    )
+    return not ppmp_request_report_missing_fields(order)
 
 
 @app.route('/api/reports/ppmp-orders/<int:order_id>')

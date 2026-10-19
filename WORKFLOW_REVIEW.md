@@ -9,6 +9,9 @@ Implemented and reviewed locally. The user authorized publishing this workflow a
 - The creator completes the twelve report columns, saves, and submits to Procurement.
 - Procurement reviews, then Admin approves. Approved PPMP data is locked.
 - A return requires a comment. The creator corrects the document and resubmits to the reviewer who returned it.
+- Admin can return incomplete legacy requests directly from the PPMP report, including historical Requested or Returned records. The creator can edit, save, and resubmit a Returned legacy record without first designating it official. Admin must still explicitly designate the correct office/year PPMP before final approval; legacy correction does not replace another official source.
+- Returned reports display the review comment, creator instructions, and missing required fields. Resubmit is enabled after the complete report is saved. Historical returns recover their reviewer from the audit history, defaulting to Admin for the former Wishlist request flow.
+- Incomplete reports cannot be approved. A valid Admin approval attempt on an incomplete report returns it to the creator with a generated correction comment and a notification. Approved source documents remain locked.
 - Previously saved records are retained. Admin explicitly designates which existing request is official when historical records overlap in a year.
 
 ## Indicative copies

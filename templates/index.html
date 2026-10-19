@@ -682,7 +682,7 @@ td.center{text-align:center}
 @media print{
   #ppmp-request-report-detail .ppmp-print-value{display:inline!important;visibility:visible!important;white-space:pre-wrap;overflow-wrap:anywhere}
   #ppmp-request-report-detail .ppmp-request-report-table [data-report-field],#ppmp-request-report-detail .ppmp-request-report-table button{display:none!important}
-  #ppmp-report-source-note,#ppmp-report-workflow-controls,#ppmp-report-history,#ppmp-office-feedback{display:none!important}
+  #ppmp-report-source-note,#ppmp-report-review-feedback,#ppmp-report-workflow-controls,#ppmp-report-history,#ppmp-office-feedback{display:none!important}
   body.print-app .main > .panel,body.print-app #panel-ppmp-request-document{display:none!important}
   body.print-app .main > #panel-apps{display:block!important;position:static!important;width:100%!important;padding:0!important;margin:0!important}
   body.print-app #panel-apps > :not(#app-record-workspace){display:none!important}
@@ -1257,6 +1257,7 @@ td.center{text-align:center}
       <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" checked disabled>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="card-body" id="ppmp-report-source-note"></div>
+      <div class="card-body ppmp-review-feedback" id="ppmp-report-review-feedback" role="status" style="background:#fffbeb;border-left:3px solid var(--gold)" hidden></div>
       <div class="ppmp-report-edit-controls" id="ppmp-report-workflow-controls"><div class="management-actions" id="ppmp-report-workflow-actions"></div><button class="btn btn-primary" type="button" onclick="backFromPPMPReport()">Back</button></div>
       <div class="ppmp-report-edit-controls" id="ppmp-report-edit-controls" aria-label="Report editing controls">
         <button class="btn btn-primary" id="ppmp-report-edit-button" type="button" onclick="editPPMPRequestReport()" disabled>Edit</button>
@@ -2461,7 +2462,7 @@ function updatePPMPReportEditingControls() {
   });
   document.getElementById('ppmp-report-document-number').disabled = !editable || !ppmpReportEditing || locked;
   document.querySelectorAll('#ppmp-request-report-controls button, #ppmp-report-workflow-controls button').forEach(button => {
-    button.disabled = locked;
+    button.disabled = locked || (button.dataset.requiresComplete === 'true' && selectedPPMPRequestReport?.is_complete === false);
   });
   const editButton = document.getElementById('ppmp-report-edit-button');
   const saveButton = document.getElementById('ppmp-report-save-button');
@@ -2509,8 +2510,9 @@ function renderPPMPRequestReport(report) {
   document.getElementById('ppmp-report-indicative').checked = indicative || !['Approved', 'Processing', 'Completed', 'Consolidated'].includes(report.status);
   document.getElementById('ppmp-report-final').checked = !document.getElementById('ppmp-report-indicative').checked;
   document.getElementById('ppmp-report-source-note').textContent = indicative ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.' : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}`;
-  document.getElementById('ppmp-report-workflow-actions').innerHTML = (!indicative && report.is_official && report.editable && ['Draft', 'Returned'].includes(report.status) ? `<button class="btn btn-primary" type="button" onclick="submitOpenPPMPReport(this)">${report.status === 'Returned' ? 'Resubmit PPMP' : 'Submit PPMP'}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
-  document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td><textarea class="form-control" data-report-field="general_description" maxlength="3000" disabled>${escapeHtml(item.general_description)}</textarea>${report.source_type !== 'indicative' && report.editable ? `<button class="btn btn-danger btn-sm mt-8" type="button" onclick="removeOfficialPPMPReportItem(${item.id},this)">Remove Item</button>` : ''}</td><td><select class="form-control" data-report-field="project_type" data-report-required disabled>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td><input class="form-control" data-report-field="quantity" type="number" min="0.01" step="0.01" value="${escapeHtml(String(item.quantity ?? ''))}" aria-label="Quantity" disabled><input class="form-control mt-8" data-report-field="unit" maxlength="80" value="${escapeHtml(item.unit || item.unit_size || '')}" aria-label="Unit / size" disabled></td><td><select class="form-control" data-report-field="procurement_method" data-report-required disabled>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required disabled><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td><input class="form-control" data-report-field="procurement_start" data-report-required type="month" value="${escapeHtml(item.procurement_start)}" disabled></td><td><input class="form-control" data-report-field="procurement_end" data-report-required type="month" value="${escapeHtml(item.procurement_end)}" disabled></td><td><input class="form-control" data-report-field="delivery_period" data-report-required type="month" value="${escapeHtml(item.delivery_period)}" disabled></td><td><select class="form-control" data-report-field="source_of_funds" data-report-required disabled>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount"><input class="form-control" data-report-field="estimated_budget" type="number" min="0" step="0.01" value="${escapeHtml(String(item.estimated_budget))}" aria-label="Estimated budget" oninput="updatePPMPReportTotal()" disabled></td><td><textarea class="form-control" data-report-field="supporting_documents" maxlength="5000" disabled>${escapeHtml(item.supporting_documents || '')}</textarea></td><td><textarea class="form-control" data-report-field="remarks" maxlength="5000" disabled>${escapeHtml(item.remarks || '')}</textarea></td></tr>`).join('');
+  document.getElementById('ppmp-report-workflow-actions').innerHTML = (!indicative && report.can_submit ? `<button class="btn btn-primary" type="button" data-requires-complete="true" title="Complete and save all required fields before submitting" onclick="submitOpenPPMPReport(this)">${report.status === 'Returned' ? 'Resubmit PPMP' : 'Submit PPMP'}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
+  renderPPMPReturnFeedback(report);
+  document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td><textarea class="form-control" data-report-field="general_description" maxlength="3000" disabled>${escapeHtml(item.general_description)}</textarea>${report.source_type !== 'indicative' && report.is_official && report.editable ? `<button class="btn btn-danger btn-sm mt-8" type="button" onclick="removeOfficialPPMPReportItem(${item.id},this)">Remove Item</button>` : ''}</td><td><select class="form-control" data-report-field="project_type" data-report-required disabled>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td><input class="form-control" data-report-field="quantity" type="number" min="0.01" step="0.01" value="${escapeHtml(String(item.quantity ?? ''))}" aria-label="Quantity" disabled><input class="form-control mt-8" data-report-field="unit" maxlength="80" value="${escapeHtml(item.unit || item.unit_size || '')}" aria-label="Unit / size" disabled></td><td><select class="form-control" data-report-field="procurement_method" data-report-required disabled>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required disabled><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td><input class="form-control" data-report-field="procurement_start" data-report-required type="month" value="${escapeHtml(item.procurement_start)}" disabled></td><td><input class="form-control" data-report-field="procurement_end" data-report-required type="month" value="${escapeHtml(item.procurement_end)}" disabled></td><td><input class="form-control" data-report-field="delivery_period" data-report-required type="month" value="${escapeHtml(item.delivery_period)}" disabled></td><td><select class="form-control" data-report-field="source_of_funds" data-report-required disabled>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount"><input class="form-control" data-report-field="estimated_budget" type="number" min="0" step="0.01" value="${escapeHtml(String(item.estimated_budget))}" aria-label="Estimated budget" oninput="updatePPMPReportTotal()" disabled></td><td><textarea class="form-control" data-report-field="supporting_documents" maxlength="5000" disabled>${escapeHtml(item.supporting_documents || '')}</textarea></td><td><textarea class="form-control" data-report-field="remarks" maxlength="5000" disabled>${escapeHtml(item.remarks || '')}</textarea></td></tr>`).join('');
   updatePPMPReportTotal();
   const comments = report.comments || [];
   const history = report.history || report.approval_history || [];
@@ -2523,12 +2525,58 @@ function renderPPMPRequestReport(report) {
 
 function ppmpReportReviewActions(report) {
   if (report.source_type === 'indicative') return '';
+  const buttons = [];
   if (currentUser.role === 'ADMIN' && !report.is_official) {
-    return `<button class="btn btn-primary" type="button" onclick="designateOfficialPPMP(${report.id},this)">Set Official PPMP</button>`;
+    buttons.push(`<button class="btn btn-primary" type="button" onclick="designateOfficialPPMP(${report.id},this)">Set Official PPMP</button>`);
   }
   const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(report.status)) || (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(report.status));
-  if (!mayReview) return '';
-  return ['approve', 'return', 'reject'].map(action => `<button class="btn ${action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-primary'}" type="button" onclick="transitionPPMPOrder(${report.id},'${action}',this)">${action.charAt(0).toUpperCase() + action.slice(1)}</button>`).join('');
+  if (mayReview) {
+    if ((report.is_official || currentUser.role === 'PROCUREMENT') && report.is_complete !== false) buttons.push(`<button class="btn btn-success" type="button" onclick="transitionPPMPOrder(${report.id},'approve',this)">Approve</button>`);
+    buttons.push(`<button class="btn btn-primary" type="button" onclick="transitionPPMPOrder(${report.id},'return',this)">Return to Creator</button>`);
+    buttons.push(`<button class="btn btn-danger" type="button" onclick="transitionPPMPOrder(${report.id},'reject',this)">Reject</button>`);
+  } else if (currentUser.role === 'ADMIN' && !report.is_official && ['Requested', 'Returned'].includes(report.status)) {
+    buttons.push(`<button class="btn btn-primary" type="button" onclick="transitionPPMPOrder(${report.id},'return',this)">Return to Creator</button>`);
+  }
+  return buttons.join('');
+}
+
+function renderPPMPReturnFeedback(report) {
+  const container = document.getElementById('ppmp-report-review-feedback');
+  container.replaceChildren();
+  container.hidden = report.source_type === 'indicative' || (report.status !== 'Returned' && report.is_complete !== false);
+  if (container.hidden) return;
+  const message = document.createElement('p');
+  if (report.status === 'Returned') {
+    const reviewer = report.return_stage === 'PROCUREMENT' ? 'Procurement' : 'Admin';
+    message.textContent = report.editable
+      ? `This PPMP was returned for correction. Choose Edit, complete the required fields, then Save and Resubmit PPMP to ${reviewer}.`
+      : `Returned to ${report.requester_name || 'the PPMP creator'} for correction. The creator can edit, save, and resubmit it to ${reviewer}.`;
+  } else {
+    message.textContent = ['ADMIN', 'PROCUREMENT'].includes(currentUser.role)
+      ? 'This PPMP is incomplete. Use Return to Creator and explain the required corrections.'
+      : 'Complete and save all required PPMP fields before submitting for review.';
+  }
+  container.appendChild(message);
+  if (report.return_note) {
+    const note = document.createElement('p');
+    note.textContent = `Review comment: ${report.return_note}`;
+    container.appendChild(note);
+  }
+  const missing = report.missing_fields || [];
+  if (missing.length) {
+    const details = document.createElement('details');
+    const heading = document.createElement('summary');
+    heading.textContent = 'Required corrections';
+    details.appendChild(heading);
+    const list = document.createElement('ul');
+    missing.forEach(row => {
+      const entry = document.createElement('li');
+      entry.textContent = `${row.item_name}: ${(row.fields || []).join(', ')}`;
+      list.appendChild(entry);
+    });
+    details.appendChild(list);
+    container.appendChild(details);
+  }
 }
 
 function updatePPMPReportTotal() {
@@ -2540,14 +2588,14 @@ function backFromPPMPReport() { return showPanel(ppmpReportReturnPanel); }
 
 async function submitOpenPPMPReport(button) {
   const report = selectedPPMPRequestReport;
-  if (!report?.is_official || !report.editable || !canUseSavedPPMPRequestReport()) return;
-  if (!confirm('Submit this official PPMP for review? All required report fields must be complete.')) return;
+  if (!report?.can_submit || !report.editable || !canUseSavedPPMPRequestReport()) return;
+  if (!confirm(`${report.status === 'Returned' ? 'Resubmit this corrected' : 'Submit this'} PPMP for review? All required report fields must be complete.`)) return;
   button.disabled = true;
   try {
     await apiFetch(report.submit_url || `${API}/ppmp-orders/${report.id}/transition`, { method: 'POST', body: JSON.stringify({ action: 'submit' }), loadingMessage: 'Submitting official PPMP...' });
     const fresh = await apiFetch(`${API}/reports/ppmp-orders/${report.id}`);
     renderPPMPRequestReport(fresh);
-    showToast('Official PPMP submitted for review.', 'PPMP', 'success');
+    showToast('PPMP submitted for review.', 'PPMP', 'success');
   } catch (error) { showToast(error.message, 'PPMP Submission', 'error'); }
   finally { button.disabled = false; }
 }
@@ -3463,9 +3511,11 @@ function legacyPPMPOrderActions(order) {
     (currentUser.role === 'PROCUREMENT' && order.status === 'EO Review') ||
     (currentUser.role === 'ADMIN' && order.status === 'Procurement Review');
   if (mayReview) {
-    buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'approve',this)">Approve</button>`);
-    buttons.push(`<button class="btn btn-ghost btn-sm" onclick="transitionPPMPOrder(${order.id},'return',this)">Return</button>`);
+    if (official || currentUser.role === 'PROCUREMENT') buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'approve',this)">Approve</button>`);
+    buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionPPMPOrder(${order.id},'return',this)">Return to Creator</button>`);
     buttons.push(`<button class="btn btn-danger btn-sm" onclick="transitionPPMPOrder(${order.id},'reject',this)">Reject</button>`);
+  } else if (currentUser.role === 'ADMIN' && !official && ['Requested', 'Returned'].includes(order.status)) {
+    buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionPPMPOrder(${order.id},'return',this)">Return to Creator</button>`);
   }
   if (order.requested_by === currentUser.id && order.status === 'Returned') {
     buttons.push(`<button class="btn btn-primary btn-sm" onclick="transitionPPMPOrder(${order.id},'submit',this)">Resubmit</button>`);
@@ -3812,14 +3862,14 @@ async function createPPMPSubmissionRequest(button) {
 async function transitionPPMPOrder(orderId, action, button) {
   let note = '';
   if (action === 'return' || action === 'reject') {
-    note = prompt(`Enter the reason to ${action} this PPMP:`);
+    note = prompt(action === 'return' ? 'Explain what the PPMP creator must complete or correct:' : 'Enter the reason to reject this PPMP:');
     if (note === null) return;
     if (!note.trim()) return showToast('A reason is required.', 'Wishlist Request', 'warning');
-  } else if (!confirm(`${action === 'submit' ? 'Resubmit' : action === 'process' ? 'Start processing' : action === 'complete' ? 'Complete' : 'Approve'} this Wishlist request?`)) return;
+  } else if (!confirm(`${action === 'submit' ? 'Resubmit' : action === 'process' ? 'Start processing' : action === 'complete' ? 'Complete' : 'Approve'} this PPMP?`)) return;
   button.disabled = true;
   try {
     const order = await apiFetch(`${API}/ppmp-orders/${orderId}/transition`, { method: 'POST', body: JSON.stringify({ action, note }), loadingMessage: 'Processing Wishlist request...' });
-    showToast(`${order.reference_number} is now ${order.status}.`, 'Wishlist Request', 'success');
+    showToast(order.auto_returned ? 'The PPMP is incomplete and was returned to its creator for correction.' : `${order.reference_number} is now ${order.status}.`, 'PPMP Review', order.status === 'Returned' ? 'warning' : 'success');
     if (selectedPPMPRequestReport?.source_type === 'official' && selectedPPMPRequestReport.id === orderId) renderPPMPRequestReport(await apiFetch(`${API}/reports/ppmp-orders/${orderId}`));
     await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
     if (document.getElementById('panel-ppmp-wishlist').classList.contains('active')) await loadWishlist();
