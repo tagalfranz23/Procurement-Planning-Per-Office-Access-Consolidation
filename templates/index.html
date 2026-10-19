@@ -4404,10 +4404,10 @@ async function submitWishlistRequest(button) {
   }
 }
 
-function appPlanActions(plan) {
+function appPlanActions(plan, { includeRecordActions = true } = {}) {
   if (!currentUser) return '';
-  const buttons = [`<button class="btn btn-primary btn-sm" type="button" onclick="openAPP(${plan.id},true)">Open</button>`];
-  if (hasClientPermission('app.export')) {
+  const buttons = includeRecordActions ? [`<button class="btn btn-primary btn-sm" type="button" onclick="openAPP(${plan.id},true)">Open</button>`] : [];
+  if (includeRecordActions && hasClientPermission('app.export')) {
     buttons.push(`<button class="btn btn-navy btn-sm" type="button" onclick="exportAPP(${plan.id},'pdf')">PDF</button>`);
     buttons.push(`<button class="btn btn-navy btn-sm" type="button" onclick="exportAPP(${plan.id},'excel')">Excel</button>`);
     buttons.push(`<button class="btn btn-primary btn-sm" type="button" onclick="printAPP(${plan.id})">Print Preview</button>`);
@@ -4475,7 +4475,7 @@ function renderAPPWorkspace() {
     : '';
   document.getElementById('app-print-meta').textContent = `${plan.plan_type.replaceAll('_',' ')} - ${plan.office} - Fiscal Year ${plan.fiscal_year} - ${plan.status}${plan.revision ? ` - Revision ${plan.revision}` : ''}`;
   document.getElementById('selected-app-meta').textContent = `Status: ${plan.status} · ${sourceLabel} · ${preparedLabel}${reportedLabel}`;
-  document.getElementById('selected-app-actions').innerHTML = appPlanActions(plan);
+  document.getElementById('selected-app-actions').innerHTML = appPlanActions(plan, { includeRecordActions: false });
   document.getElementById('app-total-budget').textContent = `₱${fmt(plan.totals.overall)}`;
   document.getElementById('app-epa-total').textContent = `₱${fmt(plan.totals.early_procurement)}`;
   document.getElementById('app-cse-total').textContent = `₱${fmt(plan.totals.cse)}`;
