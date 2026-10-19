@@ -12,6 +12,7 @@ Implemented and reviewed locally. The user authorized publishing this workflow a
 - Admin can return incomplete legacy requests directly from the PPMP report, including historical Requested or Returned records. The creator can edit, save, and resubmit a Returned legacy record without first designating it official. Admin must still explicitly designate the correct office/year PPMP before final approval; legacy correction does not replace another official source.
 - Returned reports display the review comment, creator instructions, and missing required fields. Resubmit is enabled after the complete report is saved. Historical returns recover their reviewer from the audit history, defaulting to Admin for the former Wishlist request flow.
 - Incomplete reports cannot be approved. A valid Admin approval attempt on an incomplete report returns it to the creator with a generated correction comment and a notification. Approved source documents remain locked.
+- The Start/End of Procurement Activity and Expected Delivery report fields accept typed month/year values (for example January 2027, Jan 2027, 01/2027, or 2027-01) as well as the calendar picker. Saved values remain YYYY-MM for the existing API, report exports, indicative copies, and timeline validation. Both input controls remain locked outside report edit mode.
 - Previously saved records are retained. Admin explicitly designates which existing request is official when historical records overlap in a year.
 
 ## Indicative copies
