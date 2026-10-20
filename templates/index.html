@@ -754,7 +754,7 @@ td.center{text-align:center}
   <div class="sidebar-section">Navigation</div>
   <nav>
     {% if is_admin %}
-    <div class="nav-item active" id="admin-dashboard-nav" data-panel="dashboard" onclick="showPanel('dashboard',this)">
+    <div class="nav-item" id="admin-dashboard-nav" data-panel="dashboard" onclick="showPanel('dashboard',this)">
       <span class="icon"></span> Admin Overview
       <button class="admin-submenu-toggle" id="admin-submenu-toggle" type="button" aria-label="Toggle Admin Overview submenu" aria-expanded="false" aria-controls="admin-overview-submenu" onclick="toggleAdminOverviewMenu(event)"><span aria-hidden="true">&#9662;</span></button>
     </div>
@@ -3553,7 +3553,6 @@ function showPanel(id, el, reportQuery = null) {
   }
   if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
     setAdminOverviewMenuExpanded(true);
-    if (id !== 'dashboard') document.getElementById('admin-dashboard-nav')?.classList.add('active');
   }
   if (id === 'ppmp-wishlist' || id === 'cse-add-item' || id === 'cse-user-add-item' || id === 'cse-selected-items') {
     setCSEMasterMenuExpanded(true);
