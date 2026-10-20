@@ -1166,6 +1166,7 @@ td.center{text-align:center}
         <button class="btn btn-primary" id="cse-add-item-button" type="button" onclick="openCSEMasterItemForm()">Add Item</button>
         {% else %}
         <button class="btn btn-primary" id="cse-user-add-item-button" type="button" data-permission="ppmp.view" onclick="openCustomPPMPItem()" hidden>Add Item</button>
+        <button class="btn btn-primary" id="cse-view-selected-items-button" type="button" data-permission="ppmp.view" onclick="showPanel('cse-selected-items')" hidden>View Selected Items</button>
         {% endif %}
       </div>
     </div>
