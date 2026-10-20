@@ -1161,7 +1161,13 @@ td.center{text-align:center}
         <h1>CSE Master List</h1>
         <p>Official Wishlist catalog for PPMP. Only the Administrator can edit or delete these entries.</p>
       </div>
-      {% if is_admin %}<div class="action-row"><button class="btn btn-primary" id="cse-add-item-button" type="button" onclick="openCSEMasterItemForm()">Add Item</button></div>{% endif %}
+      <div class="action-row">
+        {% if is_admin %}
+        <button class="btn btn-primary" id="cse-add-item-button" type="button" onclick="openCSEMasterItemForm()">Add Item</button>
+        {% else %}
+        <button class="btn btn-primary" id="cse-user-add-item-button" type="button" data-permission="ppmp.order.create" onclick="openCustomPPMPItem()" hidden>Add Item</button>
+        {% endif %}
+      </div>
     </div>
 
     <div class="card">
