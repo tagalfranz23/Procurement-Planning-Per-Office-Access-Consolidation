@@ -2556,8 +2556,9 @@ function updatePPMPReportEditingControls() {
   editButton.disabled = !editable || ppmpReportEditing || locked;
   editButton.title = editable ? 'Edit this report' : 'This report is read-only.';
   saveButton.disabled = !editable || !ppmpReportEditing || locked;
-  saveButton.textContent = ppmpReportSaving ? 'Saving...' : 'Save';
-  saveButton.title = ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
+  const saved = Boolean(selectedPPMPRequestReport) && !ppmpReportEditing && !locked;
+  saveButton.textContent = ppmpReportSaving ? 'Saving...' : saved ? 'Saved' : 'Save';
+  saveButton.title = saved ? 'All report changes are saved' : ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
 }
 
 function resetPPMPRequestReportEditor() {
