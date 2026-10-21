@@ -9,9 +9,21 @@ URL when a MariaDB deployment or recovery is required.
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from decimal import Decimal
+import re
 from sqlalchemy import Enum, Text, DECIMAL, JSON, UniqueConstraint, CheckConstraint
 
 db = SQLAlchemy()
+
+
+def format_username(username):
+    """Capitalize whitespace-delimited usernames while preserving their separators."""
+    def capitalize_word(match):
+        word = match.group(0)
+        initial = word[0].upper()
+        return initial[0] + (initial[1:] + word[1:]).lower()
+
+    return re.sub(r'\S+', capitalize_word, username)
+
 
 # ──────────────────────────────────────────────
 # Connection helper
@@ -101,7 +113,7 @@ class User(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'username': self.username, 'full_name': self.full_name,
+            'id': self.id, 'username': format_username(self.username), 'full_name': self.full_name,
             'email': self.email, 'role': self.role, 'released_role': self.released_role,
             'office': self.office, 'college_id': self.college_id,
             'is_active': self.is_active, 'account_status': self.account_status,
@@ -163,7 +175,7 @@ class PasswordResetRequest(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'full_name': self.user.full_name if self.user else 'Removed account',
-            'username': self.user.username if self.user else '',
+            'username': format_username(self.user.username) if self.user else '',
             'email': self.user.email if self.user else '',
             'office': self.user.office if self.user else None,
             'status': self.status,

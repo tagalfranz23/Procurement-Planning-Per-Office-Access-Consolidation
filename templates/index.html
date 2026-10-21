@@ -971,7 +971,7 @@ td.center{text-align:center}
           <div class="form-grid">
             <div class="form-group span2"><label class="form-label required" for="admin-register-full-name">Full name</label><input class="form-control" id="admin-register-full-name" autocomplete="name" required></div>
             <div class="form-group"><label class="form-label required" for="admin-register-email">Email</label><input class="form-control" id="admin-register-email" type="email" autocomplete="email" required></div>
-            <div class="form-group"><label class="form-label required" for="admin-register-username">Username</label><input class="form-control" id="admin-register-username" autocomplete="username" required></div>
+            <div class="form-group"><label class="form-label required" for="admin-register-username">Username</label><input class="form-control" id="admin-register-username" autocomplete="username" data-username-format required></div>
             <div class="form-group"><label class="form-label required" for="admin-register-office">Office</label><select class="form-control" id="admin-register-office" required><option value="">Select Office</option></select></div>
             <div class="form-group"><label class="form-label required" for="admin-register-role">Role</label><select class="form-control" id="admin-register-role" required><option value="">Select Role</option></select></div>
             <div class="form-group"><label class="form-label required" for="admin-register-password">Password (8+ characters)</label><input class="form-control" id="admin-register-password" type="password" autocomplete="new-password" minlength="8" required></div>
@@ -1529,6 +1529,7 @@ td.center{text-align:center}
 <!-- ── SCRIPTS ──────────────────────────────────── -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/floating-confirm.js') }}"></script>
+<script src="{{ url_for('static', filename='js/username-format.js') }}"></script>
 <script>
 // ─────────────────────────────────────────────
 // CONFIG
@@ -1904,7 +1905,7 @@ async function loadCurrentUser() {
   currentPermissions = data.permissions || [];
   document.getElementById('profile-office').textContent = currentUser.office || '—';
   document.getElementById('profile-full-name').textContent = currentUser.full_name || '—';
-  document.getElementById('profile-username').textContent = currentUser.username || '—';
+  document.getElementById('profile-username').textContent = UsernameFormat.format(currentUser.username) || '—';
   document.getElementById('profile-gmail').textContent = currentUser.email || '—';
   const allowed = permission => currentPermissions.includes('*') || currentPermissions.includes(permission);
   const setHidden = (id, hidden) => { const element = document.getElementById(id); if (element) element.hidden = hidden; };
@@ -2011,7 +2012,7 @@ async function loadPendingUsers() {
   try {
     const data = await apiFetch(`${API}/admin/pending-users`);
     count.textContent = data.count;
-    list.innerHTML = data.users.length ? data.users.map(user => `<div class="approval-account"><div><div class="approval-name">${escapeHtml(user.full_name)}</div><div class="approval-meta">${escapeHtml(user.email)} · ${escapeHtml(user.username)} · ${escapeHtml(user.office)} · ${escapeHtml(user.role || user.released_role || '')}</div><div class="account-detail" id="pending-detail-${user.id}" hidden><div><strong>Full Name</strong>${escapeHtml(user.full_name)}</div><div><strong>Email</strong>${escapeHtml(user.email)}</div><div><strong>Username</strong>${escapeHtml(user.username)}</div><div><strong>Office</strong>${escapeHtml(user.office)}</div><div><strong>Role</strong>${escapeHtml(user.role || user.released_role || '')}</div><div><strong>Registration Date</strong>${escapeHtml(user.created_at ? new Date(user.created_at).toLocaleString('en-PH') : '—')}</div><div><strong>Status</strong>${escapeHtml(user.account_status)}</div></div></div><div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="togglePendingUser(${user.id})">View</button><button class="btn btn-success btn-sm" type="button" onclick="approvePendingUser(${user.id}, this)">Approve</button><button class="btn btn-danger btn-sm" type="button" onclick="rejectPendingUser(${user.id}, this)">Reject</button></div></div>`).join('') : '<div class="approval-empty">No accounts are waiting for approval.</div>';
+    list.innerHTML = data.users.length ? data.users.map(user => `<div class="approval-account"><div><div class="approval-name">${escapeHtml(user.full_name)}</div><div class="approval-meta">${escapeHtml(user.email)} · ${escapeHtml(UsernameFormat.format(user.username))} · ${escapeHtml(user.office)} · ${escapeHtml(user.role || user.released_role || '')}</div><div class="account-detail" id="pending-detail-${user.id}" hidden><div><strong>Full Name</strong>${escapeHtml(user.full_name)}</div><div><strong>Email</strong>${escapeHtml(user.email)}</div><div><strong>Username</strong>${escapeHtml(UsernameFormat.format(user.username))}</div><div><strong>Office</strong>${escapeHtml(user.office)}</div><div><strong>Role</strong>${escapeHtml(user.role || user.released_role || '')}</div><div><strong>Registration Date</strong>${escapeHtml(user.created_at ? new Date(user.created_at).toLocaleString('en-PH') : '—')}</div><div><strong>Status</strong>${escapeHtml(user.account_status)}</div></div></div><div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="togglePendingUser(${user.id})">View</button><button class="btn btn-success btn-sm" type="button" onclick="approvePendingUser(${user.id}, this)">Approve</button><button class="btn btn-danger btn-sm" type="button" onclick="rejectPendingUser(${user.id}, this)">Reject</button></div></div>`).join('') : '<div class="approval-empty">No accounts are waiting for approval.</div>';
   } catch (error) {
     list.innerHTML = '<div class="approval-empty">Unable to load pending accounts. Please refresh.</div>';
     showToast('Unable to load pending accounts.', 'Account Approval', 'error');
@@ -2086,6 +2087,7 @@ async function registerAdminAccount(event) {
   event.preventDefault();
   if (currentUser?.role !== 'ADMIN') return;
   const form = event.target, field = name => document.getElementById(`admin-register-${name}`);
+  const username = UsernameFormat.normalizeInput(field('username'), true);
   setAccountManagementMessage('admin-register-message', '');
   if (field('password').value !== field('confirm').value) {
     setAccountManagementMessage('admin-register-message', 'The password confirmation does not match.');
@@ -2099,7 +2101,7 @@ async function registerAdminAccount(event) {
       method: 'POST', loadingMessage: 'Creating user account...',
       body: JSON.stringify({
         first_name: first, last_name: last, middle_name: names.join(' '),
-        email: field('email').value, username: field('username').value,
+        email: field('email').value, username,
         password: field('password').value, password_confirmation: field('confirm').value,
         office: field('office').value, role: field('role').value,
       }),

@@ -46,7 +46,7 @@ from models import (
     PPMPOrder, PPMPOrderItem, PPMPRecord, PPMPRecordItem, PPMPReport, PPMPSubmissionRequest,
     Survey, SurveyRecipient, User, UserActivityLog, WishlistItem,
     WishlistRequest, WorkflowAuditLog,
-    db, get_ppmp_items, get_summary,
+    db, format_username, get_ppmp_items, get_summary,
 )
 from models import OfficialPPMP
 from workflow_migrations import apply_workflow_migrations, workflow_required_columns
@@ -478,6 +478,7 @@ def require_authenticated_api_user():
             session.clear()
         else:
             session['role'] = user.role
+            session['username'] = format_username(user.username)
             session['auth_version'] = auth_version
     if request.path.startswith("/api/") and request.path not in public_api:
         if "user_id" not in session:
@@ -1070,16 +1071,31 @@ def index():
     )
 
 
+def username_account_ids(username):
+    """Compare legacy usernames consistently across supported database collations."""
+    lookup = format_username(username).casefold()
+    return [user_id for user_id, stored_username in db.session.query(User.id, User.username).all()
+            if format_username(stored_username).casefold() == lookup]
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
+    submitted_username = data.get("username") or ""
+    if not isinstance(submitted_username, str):
+        return jsonify({"error": "Username and password are required."}), 400
+    username = submitted_username.strip()
     password = data.get("password") or ""
     if not username or not password:
         return jsonify({"error": "Username and password are required."}), 400
-    user = User.query.filter_by(username=username).first()
-    if user is None or not check_password_hash(user.password_hash, password):
+    candidate_ids = username_account_ids(username)
+    candidates = User.query.filter(User.id.in_(candidate_ids)).all() if candidate_ids else []
+    matches = [candidate for candidate in candidates if check_password_hash(candidate.password_hash, password)]
+    # Submitted casing is formatted by the UI and cannot identify a legacy
+    # case-only collision. Never select arbitrarily between matching credentials.
+    if len(matches) != 1:
         return jsonify({"error": "Invalid username or password."}), 401
+    user = matches[0]
     if user.account_status == 'PENDING':
         audit('account', user.id, 'LOGIN_BLOCKED_PENDING_APPROVAL', {'result': 'blocked'})
         db.session.commit()
@@ -1103,7 +1119,7 @@ def login():
         }), 403
     session.clear()
     session["user_id"] = user.id
-    session["username"] = user.username
+    session["username"] = format_username(user.username)
     session["role"] = user.role
     session['auth_version'] = int(user.auth_version or 0)
     session.permanent = bool(data.get("remember_me"))
@@ -1125,13 +1141,18 @@ def register():
     middle_name = (data.get("middle_name") or "").strip()
     last_name = (data.get("last_name") or "").strip()
     email = (data.get("email") or "").strip().lower()
-    username = (data.get("username") or "").strip()
+    submitted_username = data.get("username") or ""
+    if not isinstance(submitted_username, str):
+        return jsonify({'error': 'Enter a valid username.'}), 400
+    username = format_username(submitted_username.strip())
     password = data.get("password") or ""
     password_confirmation = data.get('password_confirmation') or ''
     role = (data.get('role') or '').strip().upper()
     office = (data.get('office') or '').strip().upper()
     if not all((first_name, last_name, email, username, password, password_confirmation, role, office)):
         return jsonify({"error": "Complete all required registration fields."}), 400
+    if len(username) > User.__table__.c.username.type.length:
+        return jsonify({'error': 'Username must contain no more than 80 characters.'}), 400
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         return jsonify({"error": "Enter a valid email address."}), 400
     if len(password) < 8:
@@ -1147,7 +1168,7 @@ def register():
     managed_office = College.query.filter_by(code=office, is_active=True).first()
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'An account with this email address already exists.'}), 409
-    if User.query.filter_by(username=username).first():
+    if username_account_ids(username):
         return jsonify({'error': 'This username is already in use.'}), 409
     if User.query.filter_by(role=role).first():
         audit('account', 0, 'REGISTRATION_ROLE_UNAVAILABLE', {'role': role})
@@ -1238,7 +1259,7 @@ def admin_activity_log_tracker():
         login_time = record._philippine_time(record.time_in)
         logout_time = record._philippine_time(record.time_out)
         result.append({
-            'user': record.user.full_name or record.user.username,
+            'user': record.user.full_name or format_username(record.user.username),
             'login_month': login_time.strftime('%B'),
             'login_day': login_time.strftime('%d'),
             'login_year': login_time.strftime('%Y'),
