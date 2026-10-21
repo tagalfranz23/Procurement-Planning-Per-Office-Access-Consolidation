@@ -1,0 +1,80 @@
+.report-letterhead {
+  display: none;
+}
+
+@media print {
+  .report-letterhead {
+    display: block !important;
+    width: 100%;
+    margin: 0 0 3mm;
+    padding: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-letterhead,
+  .report-letterhead * {
+    box-sizing: border-box;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-letterhead-masthead {
+    display: grid;
+    grid-template-columns: 25mm minmax(0, 135mm) 25mm;
+    align-items: center;
+    justify-content: center;
+    column-gap: 7mm;
+    width: 100%;
+    min-height: 25mm;
+    margin: 0 auto;
+  }
+
+  .report-letterhead-logo {
+    display: block;
+    width: 25mm;
+    height: 25mm;
+    object-fit: contain;
+  }
+
+  .report-letterhead-institution {
+    max-width: 135mm;
+    text-align: center;
+  }
+
+  .report-letterhead-republic {
+    margin: 0 0 1.5mm;
+    color: #111;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    font-weight: 400;
+    line-height: 1.15;
+  }
+
+  .report-letterhead-university,
+  .report-letterhead-campus {
+    margin: 0;
+    color: #004932;
+    font-family: "Times New Roman", Times, serif;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .report-letterhead-university {
+    font-size: 20pt;
+  }
+
+  .report-letterhead-campus {
+    margin-top: 1mm;
+    font-size: 18pt;
+  }
+
+  .report-letterhead-rules {
+    width: 90%;
+    margin: 2mm auto 0;
+    padding-top: 0.6mm;
+    border-top: 1mm solid #d7a020;
+    border-bottom: 0.45mm solid #004932;
+  }
+}

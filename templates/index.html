@@ -6,6 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Project Procurement Management Plan</title>
 <link rel="icon" type="image/jpeg" href="/static/isu-seal.jpg"/>
+<link rel="preload" as="image" href="{{ url_for('static', filename='isu-seal.jpg') }}"/>
+<link rel="preload" as="image" href="{{ url_for('static', filename='bagong-pilipinas.png') }}"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/print-letterhead.css') }}"/>
 <style>
 /* ── DESIGN TOKENS ────────────────────────────────── */
 :root {
@@ -562,9 +565,9 @@ td.center{text-align:center}
   #ppmp-request-report-detail,#ppmp-request-report-detail *{visibility:visible!important}
   #ppmp-request-report-detail{display:block!important;position:static!important;width:100%!important;max-width:none!important;margin:0!important;border:0!important;box-shadow:none!important;overflow:visible!important}
   #ppmp-request-report-detail .card-header{padding:4px 0;border-bottom:0;background:#fff;color:#111;justify-content:center}
-  #ppmp-request-report-detail .ppmp-report-print-brand{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:26mm;padding-bottom:0;box-sizing:border-box}
-  #ppmp-request-report-detail .ppmp-report-print-logo{display:block;position:absolute;left:0;top:50%;width:25mm;height:25mm;object-fit:contain;transform:translateY(-50%)}
-  #ppmp-request-report-detail .ppmp-report-heading{flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center}
+  #ppmp-request-report-detail .ppmp-report-print-brand{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding-bottom:0;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid}
+  #ppmp-request-report-detail .ppmp-report-print-logo{display:none}
+  #ppmp-request-report-detail .ppmp-report-heading{flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;margin:0;text-align:center}
   #ppmp-request-report-detail .ppmp-report-types{gap:16px}
   #ppmp-request-report-detail .ppmp-report-type{color:#111;font-size:9pt}
   #ppmp-request-report-detail .ppmp-report-type input{accent-color:var(--green);print-color-adjust:exact;-webkit-print-color-adjust:exact}
@@ -954,7 +957,9 @@ td.center{text-align:center}
     <div id="app-record-workspace" hidden>
       <div class="card"><div class="card-header app-workspace-header"><div><span class="card-title" id="selected-app-label">Selected APP</span><div class="text-xs text-muted" id="selected-app-meta"></div></div><div class="management-actions" id="selected-app-actions"></div></div><div class="card-body"><div class="app-summary-grid"><div class="app-summary"><strong id="app-total-budget">₱0.00</strong><span>Overall Estimated Budget</span></div><div class="app-summary"><strong id="app-epa-total">₱0.00</strong><span>EPA Projects</span></div><div class="app-summary"><strong id="app-cse-total">₱0.00</strong><span>CSE / PS-DBM</span></div><div class="app-summary"><strong id="app-capital-total">₱0.00</strong><span>Capital Outlay</span></div></div></div></div>
       <div class="card" id="app-edit-controls" hidden><div class="card-header"><span class="card-title">Draft Structure and Items</span></div><div class="card-body"><div class="filter-row"><input class="filter-input" id="app-section-name" list="app-section-suggestions" maxlength="180" placeholder="New section name"><datalist id="app-section-suggestions"></datalist><button class="btn btn-ghost" type="button" onclick="addAPPSection(this)">Add Section</button><button class="btn btn-primary" type="button" id="app-add-item-button" onclick="openAPPItemModal()">+ Add APP Item</button></div><div class="text-xs text-muted mt-8">Section headers are stored separately from procurement project rows.</div></div></div>
-      <div class="card" id="app-print-document"><div class="card-header"><div><span class="card-title">12-Column Annual Procurement Plan</span><div class="text-xs text-muted" id="app-print-meta"></div></div><span class="text-xs text-muted">Scroll horizontally to preserve all required columns</span></div><div class="app-table-wrap"><table class="app-digital-table"><thead><tr class="app-group-header"><th colspan="6">Procurement Project Details</th><th colspan="2">Projected Timeline (MM/YYYY)</th><th colspan="2">Funding Details</th><th rowspan="2">11. Procurement Strategy or Tools</th><th rowspan="2">12. Remarks</th></tr><tr class="app-column-header"><th>1. Project Title</th><th>2. End-User / Implementing Unit</th><th>3. General Description of Project</th><th>4. Mode of Procurement</th><th>5. Early Procurement Activity?</th><th>6. Criteria for Bid Evaluation, Sustainability and Domestic Preference</th><th>7. Start</th><th>8. End</th><th>9. Source of Fund</th><th>10. Estimated / Approved Budget (PHP)</th></tr></thead><tbody id="app-digital-body"><tr><td colspan="12">Select an APP record to view its digital table.</td></tr></tbody></table></div></div>
+      <div class="card" id="app-print-document">
+        {% include 'partials/report-letterhead.html' %}
+        <div class="card-header"><div><span class="card-title">12-Column Annual Procurement Plan</span><div class="text-xs text-muted" id="app-print-meta"></div></div><span class="text-xs text-muted">Scroll horizontally to preserve all required columns</span></div><div class="app-table-wrap"><table class="app-digital-table"><thead><tr class="app-group-header"><th colspan="6">Procurement Project Details</th><th colspan="2">Projected Timeline (MM/YYYY)</th><th colspan="2">Funding Details</th><th rowspan="2">11. Procurement Strategy or Tools</th><th rowspan="2">12. Remarks</th></tr><tr class="app-column-header"><th>1. Project Title</th><th>2. End-User / Implementing Unit</th><th>3. General Description of Project</th><th>4. Mode of Procurement</th><th>5. Early Procurement Activity?</th><th>6. Criteria for Bid Evaluation, Sustainability and Domestic Preference</th><th>7. Start</th><th>8. End</th><th>9. Source of Fund</th><th>10. Estimated / Approved Budget (PHP)</th></tr></thead><tbody id="app-digital-body"><tr><td colspan="12">Select an APP record to view its digital table.</td></tr></tbody></table></div></div>
       <div class="app-two-column"><div class="card"><div class="card-header"><span class="card-title">Comments and Return Reasons</span></div><div class="card-body"><div class="filter-row"><select class="filter-select" id="app-comment-item"><option value="">APP record (general)</option></select><input class="filter-input" id="app-comment-message" maxlength="5000" placeholder="Add a permanent note"><button class="btn btn-primary" type="button" onclick="addAPPComment(this)">Add Note</button></div><div class="comment-list mt-12" id="app-comment-list"><div class="text-muted">No comments.</div></div></div></div><div class="card"><div class="card-header"><span class="card-title">Submission and Approval History</span></div><div class="card-body"><div class="comment-list" id="app-history-list"><div class="text-muted">No workflow actions.</div></div></div></div></div>
     </div>
   </section>
@@ -1270,6 +1275,7 @@ td.center{text-align:center}
 
   <section class="panel" id="panel-ppmp-request-document">
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
+      {% include 'partials/report-letterhead.html' %}
       <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" checked disabled>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="card-body" id="ppmp-report-source-note"></div>
@@ -2905,6 +2911,27 @@ async function exportPPMPRequestRecord(format) {
   window.location.href = `${report.export_base || `${API}/reports/ppmp-orders/${report.id}/export`}/${format}`;
 }
 
+async function preparePrintLetterhead(detail) {
+  await Promise.all([...detail.querySelectorAll('[data-print-logo]')].map(image => new Promise(resolve => {
+    let settled = false;
+    const finish = loaded => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      image.removeEventListener('load', onLoad);
+      image.removeEventListener('error', onError);
+      image.style.opacity = loaded ? '' : '0';
+      resolve();
+    };
+    const onLoad = () => finish(image.naturalWidth > 0);
+    const onError = () => finish(false);
+    const timer = setTimeout(() => finish(image.complete && image.naturalWidth > 0), 2500);
+    image.addEventListener('load', onLoad);
+    image.addEventListener('error', onError);
+    if (image.complete) finish(image.naturalWidth > 0);
+  })));
+}
+
 async function printPPMPRequestReport() {
   closePPMPReportExportMenu();
   const detail = document.getElementById('ppmp-request-report-detail');
@@ -2915,7 +2942,9 @@ async function printPPMPRequestReport() {
   if (!canUseSavedPPMPRequestReport()) return;
   try {
     await ppmpReportSavePromise;
-  } catch (_) {
+    await preparePrintLetterhead(detail);
+  } catch (error) {
+    showToast(error.message, 'PPMP Print Preview', 'error');
     return;
   }
   if (selectedPPMPRequestReport !== report || !canUseSavedPPMPRequestReport()) return;
@@ -4673,6 +4702,10 @@ async function printAPP(id) {
   try {
     await openAPP(id, true);
     if (!document.getElementById('panel-apps').classList.contains('active') && await showPanel('apps') === false) return;
+    const plan = selectedAPPRecord;
+    if (selectedAPPId !== id || plan?.id !== id) return;
+    await preparePrintLetterhead(document.getElementById('app-print-document'));
+    if (selectedAPPRecord !== plan || selectedAPPId !== id || !document.getElementById('panel-apps').classList.contains('active')) return;
     document.body.classList.add('print-app');
     window.print();
   } catch (error) { showToast(error.message, 'APP Print Preview', 'error'); }
