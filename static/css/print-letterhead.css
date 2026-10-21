@@ -6,6 +6,10 @@
   display: none;
 }
 
+.app-print-budget-totals {
+  display: none;
+}
+
 @media print {
   .report-letterhead {
     display: block !important;
@@ -80,6 +84,40 @@
     padding-top: 0.6mm;
     border-top: 1mm solid #d7a020;
     border-bottom: 0.45mm solid #004932;
+  }
+
+  body.print-app .app-print-budget-totals:not([hidden]) {
+    display: grid;
+    gap: 0.5mm;
+    width: 100%;
+    margin: 3mm 0 0;
+    color: #111;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 7pt;
+    line-height: 1.2;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .app-print-budget-total-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32mm;
+    column-gap: 8mm;
+    text-align: right;
+  }
+
+  .app-print-budget-total-row dt {
+    font-weight: 700;
+  }
+
+  .app-print-budget-total-row dd {
+    margin: 0;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app-print-budget-grand-total dd {
+    font-weight: 700;
   }
 
   body.print-app .app-signatures {

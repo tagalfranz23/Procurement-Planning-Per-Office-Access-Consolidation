@@ -966,6 +966,7 @@ td.center{text-align:center}
       <div class="card" id="app-print-document">
         {% include 'partials/report-letterhead.html' %}
         <div class="card-header"><div><span class="card-title" id="app-print-title">Annual Procurement Plan</span><div class="app-report-types" role="group" aria-label="APP report type"><label class="app-report-type"><input id="app-report-indicative" type="checkbox" checked disabled>Indicative</label><label class="app-report-type"><input id="app-report-final" type="checkbox" disabled>Final</label></div></div><span class="text-xs text-muted">Scroll horizontally to preserve all required columns</span></div><div class="app-table-wrap"><table class="app-digital-table"><thead><tr class="app-group-header"><th colspan="6">Procurement Project Details</th><th colspan="2">Projected Timeline (MM/YYYY)</th><th colspan="2">Funding Details</th><th rowspan="2">11. Procurement Strategy or Tools</th><th rowspan="2">12. Remarks</th></tr><tr class="app-column-header"><th>1. Project Title</th><th>2. End-User / Implementing Unit</th><th>3. General Description of Project</th><th>4. Mode of Procurement</th><th>5. Early Procurement Activity?</th><th>6. Criteria for Bid Evaluation, Sustainability and Domestic Preference</th><th>7. Start</th><th>8. End</th><th>9. Source of Fund</th><th>10. Estimated / Approved Budget (PHP)</th></tr></thead><tbody id="app-digital-body"><tr><td colspan="12">Select an APP record to view its digital table.</td></tr></tbody></table></div>
+        {% include 'partials/app-budget-totals.html' %}
         {% include 'partials/app-signatures.html' %}
       </div>
       <div class="app-two-column"><div class="card"><div class="card-header"><span class="card-title">Comments and Return Reasons</span></div><div class="card-body"><div class="filter-row"><select class="filter-select" id="app-comment-item"><option value="">APP record (general)</option></select><input class="filter-input" id="app-comment-message" maxlength="5000" placeholder="Add a permanent note"><button class="btn btn-primary" type="button" onclick="addAPPComment(this)">Add Note</button></div><div class="comment-list mt-12" id="app-comment-list"><div class="text-muted">No comments.</div></div></div></div><div class="card"><div class="card-header"><span class="card-title">Submission and Approval History</span></div><div class="card-body"><div class="comment-list" id="app-history-list"><div class="text-muted">No workflow actions.</div></div></div></div></div>
@@ -4544,6 +4545,10 @@ function renderAPPWorkspace() {
   const isFinalAPP = plan.status === 'Finalized';
   document.getElementById('app-report-indicative').checked = !isFinalAPP;
   document.getElementById('app-report-final').checked = isFinalAPP;
+  document.getElementById('app-print-budget-totals').hidden = !isFinalAPP;
+  document.getElementById('app-print-epa-total').textContent = fmt(plan.totals.early_procurement);
+  document.getElementById('app-print-cse-total').textContent = fmt(plan.totals.cse);
+  document.getElementById('app-print-overall-total').textContent = fmt(plan.totals.overall);
   document.getElementById('selected-app-meta').textContent = `Status: ${plan.status} · ${sourceLabel} · ${preparedLabel}${reportedLabel}`;
   document.getElementById('selected-app-actions').innerHTML = appPlanActions(plan, { includeRecordActions: false, includeFinalApproval: false, includeReturnAndReject: false });
   document.getElementById('app-total-budget').textContent = `₱${fmt(plan.totals.overall)}`;
