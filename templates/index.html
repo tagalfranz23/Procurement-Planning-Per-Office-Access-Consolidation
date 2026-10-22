@@ -79,8 +79,6 @@ a{text-decoration:none;color:inherit}
 .profile-detail{display:grid;grid-template-columns:88px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid var(--gray-100);font-size:12px}
 .profile-detail span{color:var(--gray-500)}
 .profile-detail strong{overflow-wrap:anywhere;color:var(--gray-900);font-weight:600}
-.activity-tracker-menu{position:relative}
-.activity-tracker-dropdown{position:absolute;top:calc(100% + 8px);right:0;z-index:250;width:min(280px,calc(100vw - 32px));padding:12px;background:white;border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow-lg)}
 #admin-activity-tracker-results .activity-tracker-tables{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 #admin-activity-tracker-results .activity-tracker-tables>.table-wrap{min-width:0;overflow-x:hidden}
 #admin-activity-tracker-results .activity-tracker-tables table{width:100%;max-width:100%;min-width:0;table-layout:fixed}
@@ -152,6 +150,12 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .ppmp-requests-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .ppmp-requests-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
 .ppmp-requests-submenu .nav-item:hover,.ppmp-requests-submenu .nav-item.active{background:var(--sky)}
+.activity-log-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.activity-log-submenu-toggle:hover,.activity-log-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.activity-log-submenu-toggle span{transition:transform .15s}
+.activity-log-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.activity-log-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.activity-log-submenu .nav-item:hover,.activity-log-submenu .nav-item.active{background:var(--sky)}
 #ppmp-request-records-card,#ppmp-request-report-detail{scroll-margin-top:calc(var(--header-h) + 16px)}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
@@ -658,7 +662,6 @@ td.center{text-align:center}
   .unit-picker{flex:1 1 auto}
   .action-row,.management-actions{align-items:stretch}
   .management-actions .btn,.action-row .btn{max-width:100%;white-space:normal}
-  .activity-tracker-dropdown{right:0;max-width:calc(100vw - 24px)}
   #admin-activity-tracker-results .activity-tracker-tables{gap:10px}
   #admin-activity-tracker-results .activity-tracker-tables>.table-wrap{overflow-x:auto}
   #admin-activity-tracker-results .activity-tracker-tables table{width:100%;min-width:560px;max-width:none;table-layout:auto}
@@ -819,7 +822,15 @@ td.center{text-align:center}
     </div>
     <div class="nav-item" id="activity-log-nav" data-panel="activity-log" onclick="showPanel('activity-log',this)">
       Activity Log
+      {% if is_admin %}
+      <button class="activity-log-submenu-toggle" id="activity-log-submenu-toggle" type="button" aria-label="Toggle Activity Log submenu" aria-expanded="false" aria-controls="activity-log-submenu" onclick="toggleActivityLogMenu(event)"><span aria-hidden="true">&#9662;</span></button>
+      {% endif %}
     </div>
+    {% if is_admin %}
+    <div class="activity-log-submenu" id="activity-log-submenu" hidden>
+      <button class="nav-item" id="activity-log-tracker-nav" type="button" data-panel="activity-log-tracker" onclick="showPanel('activity-log-tracker',this)">Activity Log Tracker</button>
+    </div>
+    {% endif %}
   </nav>
 
   <div class="sidebar-footer">
@@ -1316,16 +1327,6 @@ td.center{text-align:center}
   <section class="panel" id="panel-activity-log">
     <div class="page-header">
       <div><h1>MY ACTIVITY LOG</h1></div>
-      {% if is_admin %}
-      <div class="activity-tracker-menu">
-        <button class="btn btn-primary" id="activity-tracker-toggle" type="button" onclick="toggleActivityTracker()" aria-expanded="false" aria-controls="activity-tracker-dropdown">Activity Log Tracker</button>
-        <div class="activity-tracker-dropdown" id="activity-tracker-dropdown" hidden>
-          <select class="filter-select" id="activity-tracker-office" aria-label="Select office" onchange="loadAdminActivityTracker(this.value)" style="width:100%">
-            <option value="">Select office</option>
-          </select>
-        </div>
-      </div>
-      {% endif %}
     </div>
     <div class="card">
       <div class="table-wrap">
@@ -1335,7 +1336,21 @@ td.center{text-align:center}
         </table>
       </div>
     </div>
-    {% if is_admin %}
+  </section>
+
+  {% if is_admin %}
+  <section class="panel" id="panel-activity-log-tracker">
+    <div class="page-header">
+      <div><h1>Activity Log Tracker</h1><p>Select an office, college, or department to view its activity.</p></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><label class="card-title" for="activity-tracker-office">Office / College / Department</label></div>
+      <div class="card-body">
+        <select class="filter-select" id="activity-tracker-office" aria-label="Select office, college, or department" onchange="loadAdminActivityTracker(this.value)" style="width:min(100%,360px)">
+          <option value="">Select office / college / department</option>
+        </select>
+      </div>
+    </div>
     <div id="admin-activity-tracker-results" hidden>
       <div class="card">
         <div class="activity-tracker-tables">
@@ -1356,8 +1371,8 @@ td.center{text-align:center}
         </table></div>
       </div>
     </div>
-    {% endif %}
   </section>
+  {% endif %}
 
   <section class="panel" id="panel-schema">
     <div class="page-header">
@@ -1572,6 +1587,8 @@ let socket = null;
 const isAdminSession = appConfig.dataset.isAdmin === 'true';
 let currentUser = isAdminSession ? { role: 'ADMIN' } : null;
 let currentPermissions = [];
+let activityTrackerRequestVersion = 0;
+let activityTrackerOfficeRequest = null;
 let systemMetadata = { offices: [], roles: [] };
 let loadingRequests = 0;
 let loadingFailsafeTimer = null;
@@ -1941,6 +1958,9 @@ async function loadCurrentUser() {
   setHidden('app-create-card', currentUser.role !== 'ADMIN' || !allowed('app.create'));
   setHidden('app-order-consolidation-card', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
   setHidden('account-registration-nav', currentUser.role !== 'ADMIN');
+  setHidden('activity-log-submenu-toggle', currentUser.role !== 'ADMIN');
+  setHidden('activity-log-tracker-nav', currentUser.role !== 'ADMIN');
+  if (currentUser.role !== 'ADMIN') setActivityLogMenuExpanded(false);
   if (currentUser.role === 'ADMIN') await refreshAccountAdministration();
 }
 
@@ -1964,11 +1984,6 @@ document.addEventListener('click', event => {
     document.getElementById('profile-panel').classList.remove('open');
     document.getElementById('profile-toggle').setAttribute('aria-expanded', 'false');
   }
-  const trackerMenu = document.querySelector('.activity-tracker-menu');
-  if (trackerMenu && !trackerMenu.contains(event.target)) {
-    document.getElementById('activity-tracker-dropdown').hidden = true;
-    document.getElementById('activity-tracker-toggle').setAttribute('aria-expanded', 'false');
-  }
   const reportExportDropdown = document.getElementById('ppmp-report-export-dropdown');
   if (reportExportDropdown && !reportExportDropdown.contains(event.target)) closePPMPReportExportMenu();
 });
@@ -1981,43 +1996,57 @@ async function loadActivityLog() {
     : '<tr><td colspan="3">No activity records.</td></tr>';
 }
 
-async function toggleActivityTracker() {
+async function loadActivityTracker() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
-  const dropdown = document.getElementById('activity-tracker-dropdown');
-  const button = document.getElementById('activity-tracker-toggle');
-  dropdown.hidden = !dropdown.hidden;
-  button.setAttribute('aria-expanded', String(!dropdown.hidden));
-  if (dropdown.hidden) return;
   const select = document.getElementById('activity-tracker-office');
-  if (select.dataset.loaded === 'true') return;
-  const data = await apiFetch(`${API}/admin/activity-log`, { showLoading: false });
-  select.innerHTML = '<option value="">Select office</option>' +
-    data.offices.map(office => `<option value="${escapeHtml(office)}">${escapeHtml(office)}</option>`).join('');
-  select.dataset.loaded = 'true';
+  if (!select) return;
+  try {
+    if (select.dataset.loaded !== 'true') {
+      select.disabled = true;
+      if (!activityTrackerOfficeRequest) {
+        activityTrackerOfficeRequest = apiFetch(`${API}/admin/activity-log`, { showLoading: false }).then(data => {
+          select.replaceChildren(new Option('Select office / college / department', ''), ...data.offices.map(office => new Option(office, office)));
+          select.dataset.loaded = 'true';
+        }).finally(() => { activityTrackerOfficeRequest = null; });
+      }
+      await activityTrackerOfficeRequest;
+    }
+    await loadAdminActivityTracker(select.value);
+  } catch (error) {
+    showToast(error.message, 'Activity Log Tracker', 'error');
+  } finally {
+    select.disabled = false;
+  }
 }
 
 async function loadAdminActivityTracker(office) {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
+  const requestVersion = ++activityTrackerRequestVersion;
   const results = document.getElementById('admin-activity-tracker-results');
   const loginBody = document.getElementById('admin-activity-tracker-login-list');
   const logoutBody = document.getElementById('admin-activity-tracker-logout-list');
   const otherBody = document.getElementById('admin-activity-tracker-other-list');
-  if (!office) {
-    results.hidden = true;
-    return;
+  results.hidden = true;
+  if (!office) return;
+  try {
+    const data = await apiFetch(`${API}/admin/activity-log?office=${encodeURIComponent(office)}`, { showLoading: false });
+    if (requestVersion !== activityTrackerRequestVersion || document.getElementById('activity-tracker-office').value !== office || currentUser?.role !== 'ADMIN') return;
+    loginBody.innerHTML = data.records.length
+      ? data.records.map(record => `<tr><td>${escapeHtml(record.user)}</td><td>${escapeHtml(record.login_month)}</td><td>${escapeHtml(record.login_day)}</td><td>${escapeHtml(record.login_year)}</td><td>${escapeHtml(record.login_time)}</td></tr>`).join('')
+      : '<tr><td colspan="5">No login records for this office.</td></tr>';
+    const logoutRecords = data.records.filter(record => record.logout_month);
+    logoutBody.innerHTML = logoutRecords.length
+      ? logoutRecords.map(record => `<tr><td>${escapeHtml(record.logout_month)}</td><td>${escapeHtml(record.logout_day)}</td><td>${escapeHtml(record.logout_year)}</td><td>${escapeHtml(record.logout_time)}</td></tr>`).join('')
+      : '<tr><td colspan="4">No logout records for this office.</td></tr>';
+    otherBody.innerHTML = data.other_activities.length
+      ? data.other_activities.map(activity => `<tr><td>${escapeHtml(activity.date)}</td><td>${escapeHtml(activity.activity)}</td></tr>`).join('')
+      : '<tr><td colspan="2">No other activity records for this office.</td></tr>';
+    results.hidden = false;
+  } catch (error) {
+    if (requestVersion === activityTrackerRequestVersion && document.getElementById('activity-tracker-office').value === office) {
+      showToast(error.message, 'Activity Log Tracker', 'error');
+    }
   }
-  const data = await apiFetch(`${API}/admin/activity-log?office=${encodeURIComponent(office)}`, { showLoading: false });
-  loginBody.innerHTML = data.records.length
-    ? data.records.map(record => `<tr><td>${escapeHtml(record.user)}</td><td>${escapeHtml(record.login_month)}</td><td>${escapeHtml(record.login_day)}</td><td>${escapeHtml(record.login_year)}</td><td>${escapeHtml(record.login_time)}</td></tr>`).join('')
-    : '<tr><td colspan="5">No login records for this office.</td></tr>';
-  const logoutRecords = data.records.filter(record => record.logout_month);
-  logoutBody.innerHTML = logoutRecords.length
-    ? logoutRecords.map(record => `<tr><td>${escapeHtml(record.logout_month)}</td><td>${escapeHtml(record.logout_day)}</td><td>${escapeHtml(record.logout_year)}</td><td>${escapeHtml(record.logout_time)}</td></tr>`).join('')
-    : '<tr><td colspan="4">No logout records for this office.</td></tr>';
-  otherBody.innerHTML = data.other_activities.length
-    ? data.other_activities.map(activity => `<tr><td>${escapeHtml(activity.date)}</td><td>${escapeHtml(activity.activity)}</td></tr>`).join('')
-    : '<tr><td colspan="2">No other activity records for this office.</td></tr>';
-  results.hidden = false;
 }
 
 async function loadPendingUsers() {
@@ -3592,6 +3621,22 @@ function toggleCSEMasterMenu(event) {
   if (submenu) setCSEMasterMenuExpanded(submenu.hidden);
 }
 
+function setActivityLogMenuExpanded(expanded) {
+  const submenu = document.getElementById('activity-log-submenu');
+  const toggle = document.getElementById('activity-log-submenu-toggle');
+  if (!submenu || !toggle) return;
+  const isExpanded = Boolean(expanded && currentUser?.role === 'ADMIN');
+  submenu.hidden = !isExpanded;
+  toggle.setAttribute('aria-expanded', String(isExpanded));
+}
+
+function toggleActivityLogMenu(event) {
+  event.stopPropagation();
+  if (currentUser?.role !== 'ADMIN') return;
+  const submenu = document.getElementById('activity-log-submenu');
+  if (submenu) setActivityLogMenuExpanded(submenu.hidden);
+}
+
 async function openCSEMasterItemForm() {
   if (currentUser?.role !== 'ADMIN') return;
   if (await showPanel('cse-add-item') === false) return;
@@ -3600,6 +3645,7 @@ async function openCSEMasterItemForm() {
 }
 
 async function showPanel(id, el, reportQuery = null) {
+  if (id === 'activity-log-tracker' && currentUser?.role !== 'ADMIN') return false;
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
   if (id === 'consolidation' && currentUser?.role !== 'ADMIN') return false;
   if ((id === 'cse-user-add-item' || id === 'cse-selected-items') && (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.view'))) return;
@@ -3621,6 +3667,8 @@ async function showPanel(id, el, reportQuery = null) {
     if (id === 'cse-add-item' || id === 'cse-user-add-item' || id === 'cse-selected-items') document.getElementById('ppmp-master-nav')?.classList.add('active');
   }
 
+  if (id === 'activity-log' || id === 'activity-log-tracker') setActivityLogMenuExpanded(true);
+
   if (id === 'consolidation') renderConsolidation();
   let panelLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
   if (id === 'account-registration') {
@@ -3635,6 +3683,7 @@ async function showPanel(id, el, reportQuery = null) {
   if (id === 'ppmp-planning') panelLoad = loadPPMPPlanning();
   if (id === 'apps') panelLoad = loadApps();
   if (id === 'activity-log') loadActivityLog();
+  if (id === 'activity-log-tracker') panelLoad = loadActivityTracker();
   if (window.matchMedia('(max-width: 900px)').matches) closeSidebar();
   return panelLoad;
 }
