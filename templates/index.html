@@ -942,7 +942,7 @@ td.center{text-align:center}
       <div class="stat-card green"><div class="stat-value" id="app-stat-approved">0</div><div class="stat-label">Approved/Finalized</div><div class="stat-icon">✓</div></div>
       <div class="stat-card red"><div class="stat-value" id="app-stat-returned">0</div><div class="stat-label">Returned APP</div><div class="stat-icon">↩</div></div>
       <div class="stat-card blue"><div class="stat-value" id="app-stat-cse">0</div><div class="stat-label">APP (CSE)</div><div class="stat-icon">CS</div></div>
-      <div class="stat-card navy"><div class="stat-value" id="app-stat-batches">0</div><div class="stat-label">Consolidation Batches</div><div class="stat-icon">CO</div></div>
+      <div class="stat-card navy"><div class="stat-value" id="app-stat-batches">0</div><div class="stat-label">APP Consolidations</div><div class="stat-icon">CO</div></div>
     </div>
     <div class="card" id="app-order-consolidation-card" hidden>
       <div class="card-header"><div><span class="card-title">PPMP Items Awaiting APP Consolidation</span><div class="text-xs text-muted">Admin consolidates approved official PPMPs across offices and colleges.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">Consolidate Approved PPMPs</button></div>
@@ -968,8 +968,8 @@ td.center{text-align:center}
   </section>
 
   <section class="panel" id="panel-apps">
-    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>Institution-wide APP and supplemental APP records sourced from approved office and college PPMPs.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
-    <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">Generate or Update APP from Batch</span><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">Create Consolidation Batch</button></div><div class="card-body"><div class="app-create-note">Admin prepares and submits the consolidated APP. Additional batches continue at the current reviewer; batches added after final approval create a supplemental APP.</div><div class="filter-row"><select class="filter-select" id="app-batch" aria-label="Consolidation batch"><option value="">Consolidation batch</option></select><button class="btn btn-primary" type="button" onclick="createAPP(this)">Generate / Update APP</button></div></div></div>
+    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>One institution-wide APP is prepared from the approved Final PPMP No. 2 of every active office and college.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
+    <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">Automatic APP Draft</span></div><div class="card-body"><div class="app-create-note">The system consolidates all required Final PPMP No. 2 records and creates the APP draft when every active office and college has received final Administrator approval. Admin then prepares the draft and submits it to the BAC Chairman.</div></div></div>
     <div class="card"><div class="card-header"><span class="card-title">APP Records</span><span class="text-xs text-muted">Admin and authorized APP roles inspect the same records</span></div><div class="table-wrap"><table><thead><tr><th>Office</th><th>Fiscal Year</th><th>Type</th><th>Sections</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Next Reviewer</th><th>Actions</th></tr></thead><tbody id="app-list"><tr><td colspan="9">Loading APP records…</td></tr></tbody></table></div></div>
     <div id="app-record-workspace" hidden>
       <div class="card"><div class="card-header app-workspace-header"><div><span class="card-title" id="selected-app-label">Selected APP</span><div class="text-xs text-muted" id="selected-app-meta"></div></div><div class="management-actions" id="selected-app-actions"></div></div><div class="card-body"><div class="app-summary-grid"><div class="app-summary"><strong id="app-total-budget">₱0.00</strong><span>Overall Estimated Budget</span></div><div class="app-summary"><strong id="app-epa-total">₱0.00</strong><span>EPA Projects</span></div><div class="app-summary"><strong id="app-cse-total">₱0.00</strong><span>CSE / PS-DBM</span></div><div class="app-summary"><strong id="app-capital-total">₱0.00</strong><span>Capital Outlay</span></div></div></div></div>
@@ -1238,8 +1238,7 @@ td.center{text-align:center}
         <button class="btn btn-navy" data-permission="ppmp.export" onclick="exportPDF()">📄 Export PDF Report</button>
       </div>
     </div>
-    <div class="card" id="consolidation-selection-card"><div class="card-header"><span class="card-title">Approved PPMP Items</span><button class="btn btn-primary btn-sm" type="button" onclick="renderConsolidation()">Refresh</button></div><div class="card-body"><div class="filter-row"><select class="filter-select" id="consolidation-year" aria-label="Fiscal year" onchange="renderConsolidation()"><option value="">Select fiscal year</option></select><button class="btn btn-primary" type="button" onclick="createConsolidationBatch(this)">Create Batch</button></div><div class="form-hint">Only approved official PPMP items that have not been consolidated are eligible. Items merge when specifications, unit, fund, procurement mode, and schedule match.</div></div><div class="table-wrap"><table><thead><tr><th><input type="checkbox" id="consolidation-select-all" aria-label="Select all eligible items" onchange="toggleConsolidationItems(this.checked)"></th><th>PPMP Reference</th><th>Office / College</th><th>Item / Specifications</th><th>Quantity</th><th>Fund / Procurement Mode</th><th>Schedule</th><th>Budget</th></tr></thead><tbody id="consolidation-eligible-list"><tr><td colspan="8">Choose a fiscal year.</td></tr></tbody></table></div></div>
-    <div class="card"><div class="card-header"><span class="card-title">Consolidation Batches</span><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('apps')">APP Plans</button></div><div class="table-wrap"><table><thead><tr><th>Batch</th><th>Fiscal Year</th><th>Offices / Colleges</th><th>Items</th><th>APP</th><th>Action</th></tr></thead><tbody id="consolidation-batch-list"><tr><td colspan="6">No consolidation batches.</td></tr></tbody></table></div></div>
+    <div class="card" id="consolidation-selection-card"><div class="card-header"><span class="card-title">Final PPMP Submission Readiness</span><button class="btn btn-primary btn-sm" type="button" onclick="renderConsolidation()">Refresh</button></div><div class="card-body"><div class="filter-row"><select class="filter-select" id="consolidation-year" aria-label="Fiscal year" onchange="renderConsolidation()"><option value="">Select fiscal year</option></select></div><div class="form-hint" id="consolidation-readiness-note">Every active office and college must receive Administrator approval for Final PPMP No. 2. The system then consolidates the approved items and creates one APP draft automatically.</div></div><div class="table-wrap"><table><thead><tr><th>Office / College</th><th>PPMP Reference</th><th>PPMP Type</th><th>Items</th><th>Total Budget</th><th>Current Stage</th></tr></thead><tbody id="consolidation-eligible-list"><tr><td colspan="6">Choose a fiscal year.</td></tr></tbody></table></div></div>
   </section>
 
   <!-- ══ REPORTS ════════════════════════════════════ -->
@@ -1296,7 +1295,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-request-document">
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
       {% include 'partials/report-letterhead.html' %}
-      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" checked disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" disabled>Final</label></div></div></div></div>
+      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" oninput="updatePPMPReportEditingControls()" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" checked disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" disabled>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="card-body" id="ppmp-report-source-note"></div>
       <div class="card-body ppmp-review-feedback" id="ppmp-report-review-feedback" role="status" style="background:#fffbeb;border-left:3px solid var(--gold)" hidden></div>
@@ -1327,6 +1326,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-activity-log">
     <div class="page-header">
       <div><h1>MY ACTIVITY LOG</h1></div>
+      {% if is_admin %}<button class="btn btn-primary" type="button" onclick="showPanel('activity-log-tracker', document.getElementById('activity-log-tracker-nav'))">Activity Log Tracker</button>{% endif %}
     </div>
     <div class="card">
       <div class="table-wrap">
@@ -1614,8 +1614,6 @@ let selectedAPPRecord = null;
 let editingAPPItemId = null;
 let editingAPPContributionItemId = null;
 const pendingAPPProcurementModes = new Map();
-let consolidationEligibleItems = [];
-let consolidationBatches = [];
 let ppmpReportReturnPanel = 'ppmp-request-records';
 let masterWishlistItems = [];
 let orderDraftItems = [];
@@ -2312,7 +2310,7 @@ async function loadAPPConsolidationQueue(showLoading = false) {
     row.count += 1; row.budget += Number(item.estimated_budget || item.total_cost || 0);
     grouped.set(key, row);
   }
-  body.innerHTML = grouped.size ? [...grouped.values()].map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Approved PPMP</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">Select for Batch</button></td></tr>`).join('') : '<tr><td colspan="7">All approved official PPMP items have been consolidated.</td></tr>';
+  body.innerHTML = grouped.size ? [...grouped.values()].map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Final PPMP No. 2</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">View Readiness</button></td></tr>`).join('') : '<tr><td colspan="7">No unprocessed final PPMP sources. Consolidation occurs when every active office and college has final approval.</td></tr>';
 }
 
 async function loadAdminOverview() {
@@ -2335,52 +2333,40 @@ async function renderConsolidation() {
   try {
     const select = document.getElementById('consolidation-year');
     const previousYear = select.value;
-    const [data, batches] = await Promise.all([
-      apiFetch(`${API}/consolidation-eligible${previousYear ? `?fiscal_year=${encodeURIComponent(previousYear)}` : ''}`),
-      apiFetch(`${API}/consolidation-batches`, { showLoading: false }),
-    ]);
-    consolidationEligibleItems = data.items || [];
-    consolidationBatches = batches;
-    const years = [...new Set([...(data.fiscal_years || []), ...batches.map(row => row.fiscal_year), ...consolidationEligibleItems.map(row => row.fiscal_year), ...(previousYear ? [Number(previousYear)] : [])])].sort((a,b) => a-b);
+    const query = previousYear ? `?fiscal_year=${encodeURIComponent(previousYear)}` : '';
+    let data = await apiFetch(`${API}/consolidation-readiness${query}`);
+    let generationError = '';
+    if (data.all_final_approved && !data.app_id) {
+      try {
+        await apiFetch(`${API}/consolidation-readiness`, {
+          method: 'POST', body: JSON.stringify({ fiscal_year: data.fiscal_year }),
+          showLoading: false,
+        });
+      } catch (error) { generationError = error.message; }
+      data = await apiFetch(`${API}/consolidation-readiness?fiscal_year=${encodeURIComponent(data.fiscal_year)}`, { showLoading: false });
+    }
+    const years = data.fiscal_years || [];
     select.innerHTML = '<option value="">Select fiscal year</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
-    select.value = previousYear || (years.length === 1 ? String(years[0]) : '');
-    const selectedYear = Number(select.value);
-    const items = consolidationEligibleItems.filter(item => Number(item.fiscal_year) === selectedYear);
-    document.getElementById('consolidation-select-all').checked = false;
-    document.getElementById('consolidation-eligible-list').innerHTML = items.length ? items.map(item => `<tr><td><input type="checkbox" name="consolidation-item" value="${item.id}" aria-label="Select ${escapeHtml(item.item_description || item.general_description || item.item_name)}"></td><td>${escapeHtml(item.source_order_reference || '')}</td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name || '')}</td><td>${escapeHtml(item.item_description || item.general_description || item.item_name || '')}${item.specifications ? `<div class="text-xs text-muted">${escapeHtml(item.specifications)}</div>` : ''}</td><td>${fmtNum(item.quantity)} ${escapeHtml(item.unit_of_measure || item.unit || item.unit_size || '')}</td><td>${escapeHtml(item.fund_source || item.source_of_funds || '')}<div class="text-xs text-muted">${escapeHtml(item.mode_of_procurement || item.procurement_method || '')}</div></td><td>${formatPPMPMonth(item.procurement_start)} - ${formatPPMPMonth(item.procurement_end)}</td><td class="amount">&#8369; ${fmt(item.estimated_budget || item.total_cost || 0)}</td></tr>`).join('') : `<tr><td colspan="8">${selectedYear ? 'No unbatched approved official PPMP items for this fiscal year.' : 'Choose a fiscal year to select PPMP items.'}</td></tr>`;
-    document.getElementById('consolidation-batch-list').innerHTML = batches.length ? batches.map(batch => `<tr><td><strong>${escapeHtml(batch.name || batch.reference_number || `Batch #${batch.id}`)}</strong></td><td>${batch.fiscal_year}</td><td>${escapeHtml((batch.offices || []).map(office => typeof office === 'string' ? office : office.code || office.office_code || office.name).join(', '))}</td><td>${batch.item_count}</td><td>${batch.app_id ? `APP #${batch.app_id} - ${escapeHtml(batch.app_status || '')}` : 'Not yet generated'}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="generateAPPFromBatch(${batch.id},this)">${batch.app_id ? 'Open APP' : 'Generate / Update APP'}</button></td></tr>`).join('') : '<tr><td colspan="6">No consolidation batches.</td></tr>';
+    select.value = previousYear && years.includes(Number(previousYear))
+      ? previousYear : String(data.fiscal_year || '');
+    const rows = data.offices || [];
+    document.getElementById('consolidation-eligible-list').innerHTML = rows.length
+      ? rows.map(row => `<tr><td><strong>${escapeHtml(row.office_code)}</strong><div class="text-xs text-muted">${escapeHtml(row.office_name)}</div></td><td>${escapeHtml(row.reference_number || '—')}</td><td>${row.ppmp_type ? `${escapeHtml(row.ppmp_type)} No. ${row.ppmp_document_number}` : '—'}</td><td>${fmtNum(row.item_count)}</td><td class="amount">&#8369; ${fmt(row.total_budget)}</td><td><span class="pill ${row.is_final_approved ? 'pill-green' : row.status === 'Rejected' ? 'pill-red' : 'pill-gold'}">${escapeHtml(row.stage)}</span></td></tr>`).join('')
+      : '<tr><td colspan="6">No active PPMP offices or colleges are configured.</td></tr>';
+    const summary = data.all_final_approved
+      ? data.app_id
+        ? `All ${data.required_offices} active offices and colleges have approved Final PPMP No. 2. The system consolidated the submissions into one APP. ${data.app_label || 'APP draft'} #${data.app_id} — ${escapeHtml(data.app_status || 'Draft')}.`
+        : `All required Final PPMP No. 2 approvals are complete, but APP draft generation needs attention: ${escapeHtml(generationError || 'Refresh to retry generation.')}`
+      : `${data.final_approved_offices} of ${data.required_offices} active offices and colleges have approved Final PPMP No. 2. Consolidation and APP draft generation will happen when the remaining offices complete approval.`;
+    const openButton = data.app_id ? ` <button class="btn btn-primary btn-sm" type="button" onclick="openConsolidatedAPP(${data.app_id})">Open ${escapeHtml(data.app_label || 'APP')}</button>` : '';
+    document.getElementById('consolidation-readiness-note').innerHTML = `${summary}${openButton}`;
   } catch (error) { showToast(error.message, 'Consolidation', 'error'); }
 }
 
-function toggleConsolidationItems(checked) {
-  document.querySelectorAll('input[name="consolidation-item"]').forEach(input => { input.checked = checked; });
-}
-
-async function createConsolidationBatch(button) {
-  const year = Number(document.getElementById('consolidation-year').value);
-  const ids = [...document.querySelectorAll('input[name="consolidation-item"]:checked')].map(input => Number(input.value));
-  if (!year || !ids.length) return showToast('Choose a fiscal year and at least one approved PPMP item.', 'Consolidation', 'warning');
-  button.disabled = true;
-  try {
-    const batch = await apiFetch(`${API}/consolidation-batches`, { method: 'POST', body: JSON.stringify({ fiscal_year: year, ppmp_item_ids: ids }), loadingMessage: 'Creating consolidation batch...' });
-    showToast(`Batch #${batch.id} is ready to generate or update the APP.`, 'Consolidation', 'success');
-    await renderConsolidation();
-  } catch (error) { showToast(error.message, 'Consolidation', 'error'); }
-  finally { button.disabled = false; }
-}
-
-async function generateAPPFromBatch(batchId, button) {
-  const existing = consolidationBatches.find(batch => batch.id === batchId);
-  if (existing?.app_id) { if (await showPanel('apps') === false) return; await openAPP(existing.app_id, true); return; }
-  if (button) button.disabled = true;
-  try {
-    const plan = await apiFetch(`${API}/apps`, { method: 'POST', body: JSON.stringify({ batch_id: batchId, plan_type: 'APP' }), loadingMessage: 'Generating the consolidated APP...' });
-    selectedAPPId = plan.id;
-    if (await showPanel('apps') === false) return;
-    await loadApps();
-    showToast(`APP #${plan.id} now contains this batch.`, 'APP', 'success');
-  } catch (error) { showToast(error.message, 'APP', 'error'); }
-  finally { if (button) button.disabled = false; }
+async function openConsolidatedAPP(appId) {
+  if (await showPanel('apps') === false) return;
+  await loadApps();
+  await openAPP(appId, true);
 }
 
 function renderCountBarChart(id, data) {
@@ -2593,7 +2579,10 @@ function updatePPMPReportEditingControls() {
   });
   document.getElementById('ppmp-report-document-number').disabled = !editable || !ppmpReportEditing || locked;
   document.querySelectorAll('#ppmp-request-report-controls button, #ppmp-report-workflow-controls button').forEach(button => {
-    button.disabled = locked || (button.dataset.requiresComplete === 'true' && selectedPPMPRequestReport?.is_complete === false);
+    const needsFinalNumber = button.dataset.requiresFinalNumber === 'true';
+    button.disabled = locked
+      || (button.dataset.requiresComplete === 'true' && selectedPPMPRequestReport?.is_complete === false)
+      || (needsFinalNumber && Number(document.getElementById('ppmp-report-document-number').value) !== 2);
   });
   const editButton = document.getElementById('ppmp-report-edit-button');
   const saveButton = document.getElementById('ppmp-report-save-button');
@@ -2645,15 +2634,24 @@ window.addEventListener('beforeunload', event => {
 function renderPPMPRequestReport(report) {
   selectedPPMPRequestReport = report;
   ppmpReportEditing = false;
-  const indicative = report.source_type === 'indicative';
+  const indicative = report.source_type === 'indicative' || Number(report.ppmp_document_number) !== 2;
   document.getElementById('ppmp-report-fiscal-year').textContent = report.fiscal_year;
   document.getElementById('ppmp-report-office').textContent = report.end_user_or_implementing_unit;
   document.getElementById('ppmp-report-document-number').value = report.ppmp_document_number || 1;
-  // PPMP approval does not finalize the plan; PPMP reports remain Indicative.
-  document.getElementById('ppmp-report-indicative').checked = true;
-  document.getElementById('ppmp-report-final').checked = false;
-  document.getElementById('ppmp-report-source-note').textContent = indicative ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.' : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}`;
-  document.getElementById('ppmp-report-workflow-actions').innerHTML = (!indicative && report.can_submit ? `<button class="btn btn-primary" type="button" data-requires-complete="true" title="Complete and save all required fields before submitting" onclick="submitOpenPPMPReport(this)">${report.status === 'Returned' ? 'Resubmit PPMP' : 'Submit PPMP'}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
+  document.getElementById('ppmp-report-indicative').checked = indicative;
+  document.getElementById('ppmp-report-final').checked = !indicative;
+  const finalizationNote = report.status === 'Awaiting Finalization'
+    ? 'Procurement and Admin approved Indicative PPMP No. 1. Update the document number to 2 for Final, then resubmit to Procurement.'
+    : '';
+  document.getElementById('ppmp-report-source-note').textContent = report.source_type === 'indicative'
+    ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.'
+    : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}${finalizationNote ? ` - ${finalizationNote}` : ''}`;
+  const canSubmit = Boolean(report.can_submit && report.editable);
+  const submitLabel = report.status === 'Awaiting Finalization'
+    ? 'Submit Final PPMP No. 2'
+    : report.status === 'Returned' ? 'Resubmit PPMP'
+    : 'Submit Indicative PPMP No. 1';
+  document.getElementById('ppmp-report-workflow-actions').innerHTML = (canSubmit ? `<button class="btn btn-primary" type="button" data-requires-complete="true"${report.status === 'Awaiting Finalization' ? ' data-requires-final-number="true"' : ''} title="Complete and save all required fields before submitting" onclick="submitOpenPPMPReport(this)">${submitLabel}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
   renderPPMPReturnFeedback(report);
   document.getElementById('ppmp-request-report-items').innerHTML = report.items.map(item => `<tr data-report-item-id="${item.id}"><td><textarea class="form-control" data-report-field="general_description" maxlength="3000" disabled>${escapeHtml(item.general_description)}</textarea>${report.source_type !== 'indicative' && report.is_official && report.editable ? `<button class="btn btn-danger btn-sm mt-8" type="button" onclick="removeOfficialPPMPReportItem(${item.id},this)">Remove Item</button>` : ''}</td><td><select class="form-control" data-report-field="project_type" data-report-required disabled>${ppmpReportProjectTypeOptions(report, item.project_type)}</select></td><td><input class="form-control" data-report-field="quantity" type="number" min="0.01" step="0.01" value="${escapeHtml(String(item.quantity ?? ''))}" aria-label="Quantity" disabled><input class="form-control mt-8" data-report-field="unit" maxlength="80" value="${escapeHtml(item.unit || item.unit_size || '')}" aria-label="Unit / size" disabled></td><td><select class="form-control" data-report-field="procurement_method" data-report-required disabled>${ppmpReportMethodOptions(report, item.procurement_method)}</select></td><td><select class="form-control" data-report-field="pre_procurement_conference" data-report-required disabled><option value="">Select Yes or No</option><option value="Yes"${item.pre_procurement_conference === 'Yes' ? ' selected' : ''}>Yes</option><option value="No"${item.pre_procurement_conference === 'No' ? ' selected' : ''}>No</option></select></td><td>${renderPPMPMonthInput(item, 'procurement_start', 'Start of Procurement Activity')}</td><td>${renderPPMPMonthInput(item, 'procurement_end', 'End of Procurement Activity')}</td><td>${renderPPMPMonthInput(item, 'delivery_period', 'Expected Delivery Implementation Period')}</td><td><select class="form-control" data-report-field="source_of_funds" data-report-required disabled>${ppmpReportFundSourceOptions(report, item.source_of_funds)}</select></td><td class="amount"><input class="form-control" data-report-field="estimated_budget" type="number" min="0" step="0.01" value="${escapeHtml(String(item.estimated_budget))}" aria-label="Estimated budget" oninput="updatePPMPReportTotal()" disabled></td><td><textarea class="form-control" data-report-field="supporting_documents" maxlength="5000" disabled>${escapeHtml(item.supporting_documents || '')}</textarea></td><td><textarea class="form-control" data-report-field="remarks" maxlength="5000" disabled>${escapeHtml(item.remarks || '')}</textarea></td></tr>`).join('');
   updatePPMPReportTotal();
@@ -2674,7 +2672,12 @@ function ppmpReportReviewActions(report) {
   }
   const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(report.status)) || (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(report.status));
   if (mayReview) {
-    if ((report.is_official || currentUser.role === 'PROCUREMENT') && report.is_complete !== false) buttons.push(`<button class="btn btn-success" type="button" onclick="transitionPPMPOrder(${report.id},'approve',this)">Approve</button>`);
+    const approveLabel = currentUser.role === 'PROCUREMENT'
+      ? 'Approve & Forward to Admin'
+      : Number(report.ppmp_document_number) === 1
+        ? 'Approve Indicative No. 1 & Return to Requester'
+        : 'Final Approve PPMP No. 2';
+    if ((report.is_official || currentUser.role === 'PROCUREMENT') && report.is_complete !== false) buttons.push(`<button class="btn btn-success" type="button" onclick="transitionPPMPOrder(${report.id},'approve',this)">${approveLabel}</button>`);
     buttons.push(`<button class="btn btn-primary" type="button" onclick="transitionPPMPOrder(${report.id},'return',this)">Return to Creator</button>`);
     buttons.push(`<button class="btn btn-danger" type="button" onclick="transitionPPMPOrder(${report.id},'reject',this)">Reject</button>`);
   } else if (currentUser.role === 'ADMIN' && !report.is_official && ['Requested', 'Returned'].includes(report.status)) {
@@ -2732,13 +2735,16 @@ function backFromPPMPReport() { return showPanel(ppmpReportReturnPanel); }
 async function submitOpenPPMPReport(button) {
   const report = selectedPPMPRequestReport;
   if (!report?.can_submit || !report.editable || !canUseSavedPPMPRequestReport()) return;
-  if (!await showFloatingConfirm(`${report.status === 'Returned' ? 'Resubmit this corrected' : 'Submit this'} PPMP for review? All required report fields must be complete.`)) return;
+  const isFinalization = report.status === 'Awaiting Finalization';
+  if (!await showFloatingConfirm(isFinalization
+    ? 'Submit Final PPMP No. 2 to Procurement for approval? All required report fields must be complete.'
+    : `${report.status === 'Returned' ? 'Resubmit this corrected' : 'Submit this'} Indicative PPMP No. 1 for review? All required report fields must be complete.`)) return;
   button.disabled = true;
   try {
     await apiFetch(report.submit_url || `${API}/ppmp-orders/${report.id}/transition`, { method: 'POST', body: JSON.stringify({ action: 'submit' }), loadingMessage: 'Submitting official PPMP...' });
     const fresh = await apiFetch(`${API}/reports/ppmp-orders/${report.id}`);
     renderPPMPRequestReport(fresh);
-    showToast('PPMP submitted for review.', 'PPMP', 'success');
+    showToast(isFinalization ? 'Final PPMP No. 2 submitted to Procurement.' : 'Indicative PPMP No. 1 submitted for review.', 'PPMP', 'success');
   } catch (error) { showToast(error.message, 'PPMP Submission', 'error'); }
   finally { button.disabled = false; }
 }
@@ -3668,7 +3674,7 @@ async function showPanel(id, el, reportQuery = null) {
     if (id === 'cse-add-item' || id === 'cse-user-add-item' || id === 'cse-selected-items') document.getElementById('ppmp-master-nav')?.classList.add('active');
   }
 
-  if (id === 'activity-log' || id === 'activity-log-tracker') setActivityLogMenuExpanded(true);
+  if (id === 'activity-log-tracker') setActivityLogMenuExpanded(true);
 
   if (id === 'consolidation') renderConsolidation();
   let panelLoad = id === 'reports' || id === 'ppmp-request-records' ? loadOrderReports(reportQuery) : undefined;
@@ -4010,7 +4016,12 @@ function ppmpOrderActions(order) {
   const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(order.status)) ||
     (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(order.status));
   if (mayReview) {
-    buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'approve',this)">Approve</button>`);
+    const approveLabel = currentUser.role === 'PROCUREMENT'
+      ? 'Approve & Forward to Admin'
+      : Number(order.ppmp_document_number) === 1
+        ? 'Approve Indicative No. 1 & Return to Requester'
+        : 'Final Approve PPMP No. 2';
+    buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'approve',this)">${approveLabel}</button>`);
     buttons.push(`<button class="btn btn-ghost btn-sm" onclick="transitionPPMPOrder(${order.id},'return',this)">Return</button>`);
     buttons.push(`<button class="btn btn-danger btn-sm" onclick="transitionPPMPOrder(${order.id},'reject',this)">Reject</button>`);
   }
@@ -4064,11 +4075,20 @@ async function transitionPPMPOrder(orderId, action, button) {
   button.disabled = true;
   try {
     const order = await apiFetch(`${API}/ppmp-orders/${orderId}/transition`, { method: 'POST', body: JSON.stringify({ action, note }), loadingMessage: 'Processing Wishlist request...' });
-    showToast(order.auto_returned ? 'The PPMP is incomplete and was returned to its creator for correction.' : `${order.reference_number} is now ${order.status}.`, 'PPMP Review', order.status === 'Returned' ? 'warning' : 'success');
+    const workflowMessage = order.auto_returned
+      ? 'The PPMP is incomplete and was returned to its creator for correction.'
+      : order.consolidated_app
+        ? `All required Final PPMP No. 2 records are approved. APP #${order.consolidated_app.id} is ${order.consolidated_app.status}.`
+        : order.auto_consolidation_error
+          ? `${order.reference_number} is approved, but automatic APP consolidation needs attention: ${order.auto_consolidation_error}`
+          : `${order.reference_number} is now ${order.status}.`;
+    showToast(workflowMessage, 'PPMP Review', order.status === 'Returned' || order.auto_consolidation_error ? 'warning' : 'success');
     if (selectedPPMPRequestReport?.source_type === 'official' && selectedPPMPRequestReport.id === orderId) renderPPMPRequestReport(await apiFetch(`${API}/reports/ppmp-orders/${orderId}`));
     await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
     if (document.getElementById('panel-ppmp-wishlist').classList.contains('active')) await loadWishlist();
     if (document.getElementById('panel-app-dashboard').classList.contains('active')) await loadAPPConsolidationQueue(false);
+    if (currentUser.role === 'ADMIN' && document.getElementById('panel-consolidation').classList.contains('active')) await renderConsolidation();
+    if (document.getElementById('panel-apps').classList.contains('active')) await loadApps();
     if (currentUser.role === 'ADMIN') await loadAdminOverview();
   } catch (error) {
     showToast(error.message, 'Wishlist Request', 'error');
@@ -4523,7 +4543,8 @@ async function submitWishlistRequest(button) {
 function appPlanActions(plan, { includeRecordActions = true, includeFinalApproval = true, includeReturnAndReject = true } = {}) {
   if (!currentUser) return '';
   const buttons = includeRecordActions ? [`<button class="btn btn-primary btn-sm" type="button" onclick="openAPP(${plan.id},true)">Open</button>`] : [];
-  if (includeRecordActions && hasClientPermission('app.export')) {
+  const finalAPPReady = Number(plan.workflow_version || 1) < 2 || plan.status === 'Finalized';
+  if (includeRecordActions && finalAPPReady && hasClientPermission('app.export')) {
     buttons.push(`<button class="btn btn-navy btn-sm" type="button" onclick="exportAPP(${plan.id},'pdf')">PDF</button>`);
     buttons.push(`<button class="btn btn-navy btn-sm" type="button" onclick="exportAPP(${plan.id},'excel')">Excel</button>`);
     buttons.push(`<button class="btn btn-primary btn-sm" type="button" onclick="printAPP(${plan.id})">Print Preview</button>`);
@@ -4545,26 +4566,16 @@ function appPlanActions(plan, { includeRecordActions = true, includeFinalApprova
 }
 
 async function loadApps() {
-  const [plans, metadata, batches] = await Promise.all([
+  const [plans, metadata] = await Promise.all([
     apiFetch(`${API}/apps`), apiFetch(`${API}/apps/metadata`),
-    currentUser.role === 'ADMIN' ? apiFetch(`${API}/consolidation-batches`) : Promise.resolve([]),
   ]);
-  appPlans = plans; appMetadata = metadata; consolidationBatches = batches;
-  const batchSelect = document.getElementById('app-batch');
-  const previous = batchSelect?.value;
-  if (batchSelect) {
-    batchSelect.innerHTML = '<option value="">Select an unprocessed consolidation batch</option>' + batches.filter(batch => !batch.app_id).map(batch => `<option value="${batch.id}">Batch #${batch.id} - FY ${batch.fiscal_year} - ${batch.item_count} approved item(s)</option>`).join('');
-    if ([...batchSelect.options].some(option => option.value === previous)) batchSelect.value = previous;
-  }
+  appPlans = plans; appMetadata = metadata;
   document.getElementById('app-section-suggestions').innerHTML = (metadata.suggested_sections || []).map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
-  document.getElementById('app-list').innerHTML = plans.length ? plans.map(plan => `<tr><td>${escapeHtml(plan.office)}${plan.is_supplemental || plan.supplemental_number ? `<div class="text-xs text-muted">Supplemental APP ${plan.supplemental_number || ''}</div>` : ''}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type.replaceAll('_',' '))}</td><td>${plan.section_count}</td><td>${plan.item_count}</td><td class="amount">&#8369; ${fmt(plan.totals.overall)}</td><td><span class="pill ${['Approved','Finalized'].includes(plan.status)?'pill-green':['Returned','Rejected'].includes(plan.status)?'pill-red':'pill-gold'}">${escapeHtml(plan.status)}</span></td><td>${escapeHtml(plan.expected_reviewer || (plan.status === 'Returned' ? `Admin correction, then ${plan.return_stage || plan.returned_from_role || 'returning reviewer'}` : ''))}</td><td><div class="management-actions">${appPlanActions(plan)}</div></td></tr>`).join('') : '<tr><td colspan="9">Admin can generate the APP after creating a batch from approved official PPMPs.</td></tr>';
+  document.getElementById('app-list').innerHTML = plans.length ? plans.map(plan => {
+    const statusLabel = plan.status === 'Finalized' && Number(plan.workflow_version || 1) >= 2 ? 'Final APP Record' : plan.status;
+    return `<tr><td>${escapeHtml(plan.office)}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type.replaceAll('_',' '))}</td><td>${plan.section_count}</td><td>${plan.item_count}</td><td class="amount">&#8369; ${fmt(plan.totals.overall)}</td><td><span class="pill ${['Approved','Finalized'].includes(plan.status)?'pill-green':['Returned','Rejected'].includes(plan.status)?'pill-red':'pill-gold'}">${escapeHtml(statusLabel)}</span></td><td>${escapeHtml(plan.expected_reviewer || (plan.status === 'Returned' ? `Admin correction, then ${plan.return_stage || plan.returned_from_role || 'returning reviewer'}` : ''))}</td><td><div class="management-actions">${appPlanActions(plan)}</div></td></tr>`;
+  }).join('') : '<tr><td colspan="9">The APP draft will appear here after all active offices and colleges receive final approval for PPMP No. 2.</td></tr>';
   if (selectedAPPId && plans.some(plan => plan.id === selectedAPPId)) await openAPP(selectedAPPId, false);
-}
-
-async function createAPP(button) {
-  const batchId = Number(document.getElementById('app-batch').value);
-  if (!batchId) return showToast('Choose an unprocessed consolidation batch.', 'APP', 'warning');
-  return generateAPPFromBatch(batchId, button);
 }
 
 async function openAPP(id, showLoading=false) {
@@ -4659,6 +4670,7 @@ async function saveAPPProcurementMode(itemId, button) {
 
 function renderAPPTable() {
   const plan = selectedAPPRecord, editable = selectedAPPEditable();
+  const isFinalAPP = plan.status === 'Finalized';
   const rows = [];
   for (const section of plan.sections) {
     const deleteButton = editable && !section.items.length ? `<button class="btn btn-danger btn-sm" type="button" onclick="deleteAPPSection(${section.id},this)">Delete Empty Section</button>` : '';
@@ -4673,6 +4685,11 @@ function renderAPPTable() {
   }
   rows.push(`<tr class="tfoot-row"><td colspan="9">TOTAL AMOUNT OF ESTIMATED BUDGET</td><td class="amount">₱${fmt(plan.totals.overall)}</td><td colspan="2"></td></tr>`);
   document.getElementById('app-digital-body').innerHTML = rows.length > 1 ? rows.join('') : '<tr><td colspan="12">This APP has no sections or items.</td></tr>';
+  if (isFinalAPP) {
+    document.querySelectorAll('#app-digital-body tr:not(.app-section-row):not(.app-total-row):not(.tfoot-row) td:nth-child(2)').forEach(cell => {
+      cell.textContent = 'ISU Cauayan Campus';
+    });
+  }
 }
 
 function appItems() { return selectedAPPRecord ? selectedAPPRecord.sections.flatMap(section => section.items) : []; }
@@ -4770,6 +4787,10 @@ async function printAPP(id) {
     if (!document.getElementById('panel-apps').classList.contains('active') && await showPanel('apps') === false) return;
     const plan = selectedAPPRecord;
     if (selectedAPPId !== id || plan?.id !== id) return;
+    if (Number(plan.workflow_version || 1) >= 2 && plan.status !== 'Finalized') {
+      showToast('Print Preview is available after the APP becomes a Final APP Record.', 'APP Print Preview', 'warning');
+      return;
+    }
     await preparePrintLetterhead(document.getElementById('app-print-document'));
     if (selectedAPPRecord !== plan || selectedAPPId !== id || !document.getElementById('panel-apps').classList.contains('active')) return;
     document.body.classList.add('print-app');

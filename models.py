@@ -717,7 +717,7 @@ class PPMPOrder(db.Model):
     STATUSES = (
         'Draft', 'Requested', 'Pending Admin Approval',
         'Submitted', 'EO Review', 'Procurement Review',
-        'Returned', 'Approved', 'Rejected', 'Processing', 'Completed',
+        'Returned', 'Awaiting Finalization', 'Approved', 'Rejected', 'Processing', 'Completed',
     )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -762,6 +762,7 @@ class PPMPOrder(db.Model):
                 'Procurement Review': 'Procurement Review',
                 'Pending Admin Approval': 'Administrator Approval',
                 'Returned': 'Creator Revision',
+                'Awaiting Finalization': 'Requester Finalization of Indicative PPMP',
                 'Approved': 'Final Approved PPMP',
                 'Rejected': 'Closed',
             }.get(self.status, self.status)

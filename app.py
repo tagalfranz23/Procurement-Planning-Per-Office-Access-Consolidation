@@ -101,7 +101,7 @@ PPMP_REPORT_PROCUREMENT_METHODS = (
     'Unsolicited Offer with Bid Matching',
 )
 PPMP_REPORT_PENDING_STATUSES = {
-    'Draft', 'Returned',
+    'Draft', 'Returned', 'Awaiting Finalization',
 }
 PPMP_REPORT_COLUMNS = (
     'General Description and Objective of the Project to be Procured',
@@ -213,6 +213,37 @@ def is_ppmp_office_role(role):
     if role in ROLE_PERMISSIONS:
         return False
     return role in PPMP_OFFICE_ROLES or role in {office.code for office in College.query.filter_by(is_active=True).all()}
+
+
+def resolve_ppmp_user_office(user, *, provision_missing=False):
+    """Resolve an office account's active College link, repairing legacy missing links."""
+    linked_office = db.session.get(College, user.college_id) if user and user.college_id else None
+    if linked_office is not None:
+        return linked_office if linked_office.is_active else None
+
+    office_code = (user.office or '').strip().upper() if user else ''
+    role_code = (user.role or '').strip().upper() if user else ''
+    if not office_code or role_code != office_code:
+        return None
+
+    office = College.query.filter_by(code=office_code).first()
+    if office is not None:
+        return office if office.is_active else None
+    if not provision_missing or office_code not in PPMP_OFFICE_ROLES:
+        return None
+
+    office = College(
+        code=office_code,
+        name=DEPARTMENT_UNITS.get(office_code, office_code),
+        is_active=True,
+    )
+    db.session.add(office)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        office = College.query.filter_by(code=office_code, is_active=True).first()
+    return office
 
 
 def permissions_for(user):
@@ -413,6 +444,9 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
         title = 'PPMP awaiting Procurement review'
         notify_roles(('PROCUREMENT',), title, f'{label} {detail} Open PPMP Request Records to review it.',
                      target_type='ppmp_order', target_id=order.id, action_stage='PROCUREMENT')
+    elif order.status == 'Awaiting Finalization':
+        title = 'Approved Indicative PPMP returned for finalization'
+        detail = 'received Procurement and Administrator approval as Indicative PPMP No. 1. The requester must update it to Final PPMP No. 2 and resubmit.'
     else:
         title = f'PPMP {order.status.lower()}'
         detail = {
@@ -423,14 +457,14 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
             'Completed': 'has been completed.',
         }.get(order.status, f'is now {order.status}.')
     message = f'{label} {detail}' + (f' Review note: {note}' if note else '')
-    notification_type = ('success' if order.status in {'Approved', 'Completed'} else
+    notification_type = ('success' if order.status in {'Approved', 'Completed', 'Awaiting Finalization'} else
                          'warning' if order.status in {'Returned', 'Rejected'} else 'info')
     if order.status not in {'Pending Admin Approval', 'Procurement Review'} and reviewer_role != 'ADMIN':
         notify_roles(('ADMIN',), f'PPMP {order.status.lower()}', message, notification_type,
                      target_type='ppmp_order', target_id=order.id)
     notify_offices({order.office_id}, title, message, notification_type,
                    extra_recipients=[order.requester], target_type='ppmp_order', target_id=order.id,
-                   action_stage='CREATOR' if order.status == 'Returned' else None)
+                   action_stage='CREATOR' if order.status in {'Returned', 'Awaiting Finalization'} else None)
 
 
 def app_notification_label(plan):
@@ -888,6 +922,27 @@ def migrate_revision_schema():
                 'UNIQUE (office_id, fiscal_year)'
             ))
             db.session.commit()
+    # Approved official No. 1 records are still Indicative under the revised
+    # process. Reopen only those that have not already contributed to an APP.
+    for order in PPMPOrder.query.filter_by(
+        workflow_official=True, status='Approved', ppmp_document_number=1,
+    ).all():
+        already_in_app = db.session.query(APPItemContribution.id).join(
+            APPItem, APPItem.id == APPItemContribution.app_item_id,
+        ).filter(
+            APPItemContribution.source_ppmp_item_id.in_(
+                [row.ppmp_item_id for row in order.items if row.ppmp_item_id]
+            )
+        ).first() if any(row.ppmp_item_id for row in order.items) else None
+        if already_in_app:
+            continue
+        order.status = 'Awaiting Finalization'
+        db.session.add(WorkflowAuditLog(
+            entity_type='ppmp_order', entity_id=order.id,
+            action='INDICATIVE_APPROVAL_REOPENED_FOR_FINALIZATION',
+            details={'from': 'Approved', 'to': 'Awaiting Finalization', 'document_number': 1},
+        ))
+    db.session.commit()
 
 
 def archive_legacy_franz_account():
@@ -1423,22 +1478,14 @@ def approve_pending_user(user_id):
     data = request.get_json(silent=True) or {}
     if user.account_status != 'PENDING':
         return jsonify({'error': 'Only a pending account can be approved.'}), 409
-    if user.role not in {'ADMIN', 'EO', 'AA', 'PROCUREMENT', 'BUDGET', 'BAC CHAIRMAN'}:
-        office = db.session.get(College, user.college_id) if user.college_id else None
+    if user.role not in {'ADMIN', 'EO', 'PROCUREMENT', 'BUDGET', 'BAC CHAIRMAN'}:
+        office = resolve_ppmp_user_office(user, provision_missing=True)
         if office is None:
-            office = College.query.filter_by(code=user.office).first()
-        if office is None and user.office in PPMP_OFFICE_ROLES and user.role == user.office:
-            office = College(code=user.office, name=DEPARTMENT_UNITS.get(user.office, user.office), is_active=True)
-            db.session.add(office)
-            try:
-                db.session.flush()
-            except IntegrityError:
-                db.session.rollback()
-                office = College.query.filter_by(code=user.office, is_active=True).first()
-        if office is None:
+            office_code = (user.office or '').strip().upper()
+            existing_office = College.query.filter_by(code=office_code).first() if office_code else None
+            if existing_office is not None and not existing_office.is_active:
+                return jsonify({'error': 'This account is linked to an inactive operational office.'}), 409
             return jsonify({'error': 'This account is not linked to a recognized operational office.'}), 409
-        if not office.is_active:
-            return jsonify({'error': 'This account is linked to an inactive operational office.'}), 409
         user.college_id = office.id
     user.account_status, user.is_active = 'ACTIVE', True
     resolve_notification_tasks('account', user.id)
@@ -1925,9 +1972,12 @@ def ppmp_records():
 
     if not has_permission(user, 'ppmp.record.create') or not is_ppmp_office_role(user.role):
         return jsonify({'error': 'Only an approved office PPMP user can create a PPMP record.'}), 403
-    office = db.session.get(College, user.college_id) if user.college_id else None
-    if office is None or not office.is_active:
+    office = resolve_ppmp_user_office(user, provision_missing=True)
+    if office is None:
         return jsonify({'error': 'Your account must be linked to an active office.'}), 409
+    if user.college_id != office.id:
+        user.college_id = office.id
+        db.session.commit()
     data = request.get_json(silent=True) or {}
     raw_fiscal_year = data.get('fiscal_year')
     try:
@@ -2421,34 +2471,46 @@ def update_wishlist(item_id):
     return jsonify(item.to_dict())
 
 
-def materialize_approved_ppmp_order(order, approver):
-    """Create procurement rows without ever promoting custom items to the master Wishlist."""
+def materialize_approved_ppmp_order(order, approver, *, synchronize_existing=False):
+    """Synchronize final approved PPMP #2 rows without promoting custom items to Wishlist."""
     created = 0
     for source in order.items:
-        if source.ppmp_item_id:
+        if source.ppmp_item_id and not synchronize_existing:
             continue
-        item = PPMPItem(
-            college_id=order.office_id,
-            fiscal_year=order.fiscal_year,
-            item_description=source.item_name,
-            unit=source.unit,
-            quantity=source.quantity,
-            unit_cost=source.estimated_unit_cost,
-            authorized_budget=source.estimated_budget,
-            fund_source=source.source_of_funds,
-            mode_of_procurement=source.procurement_method,
-            procurement_type=source.project_type,
-            quarter=order.quarter,
-            remarks=source.remarks,
-            status='Approved',
-            created_by=order.requested_by,
-            approved_by=approver.id,
-            approved_at=order.decided_at,
-        )
-        db.session.add(item)
-        db.session.flush()
-        source.ppmp_item_id = item.id
-        created += 1
+        item = db.session.get(PPMPItem, source.ppmp_item_id) if source.ppmp_item_id else None
+        if item is None:
+            item = PPMPItem(
+                college_id=order.office_id, fiscal_year=order.fiscal_year,
+                item_description=source.item_name, unit=source.unit,
+                quantity=source.quantity, unit_cost=source.estimated_unit_cost or 0,
+                authorized_budget=source.estimated_budget,
+                fund_source=source.source_of_funds or 'GAA',
+                mode_of_procurement=source.procurement_method or 'Small Value Procurement',
+                procurement_type=source.project_type or 'Goods', quarter=order.quarter,
+                remarks=source.remarks, status='Approved', created_by=order.requested_by,
+                approved_by=approver.id, approved_at=order.decided_at,
+            )
+            db.session.add(item)
+            db.session.flush()
+            source.ppmp_item_id = item.id
+            created += 1
+        quantity = Decimal(source.quantity or 0)
+        budget = Decimal(source.estimated_budget or 0)
+        item.college_id = order.office_id
+        item.fiscal_year = order.fiscal_year
+        item.item_description = source.item_name
+        item.unit = source.unit
+        item.quantity = quantity
+        item.unit_cost = (budget / quantity).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if quantity else Decimal('0.00')
+        item.authorized_budget = budget
+        item.fund_source = source.source_of_funds or 'GAA'
+        item.mode_of_procurement = source.procurement_method or 'Small Value Procurement'
+        item.procurement_type = source.project_type or 'Goods'
+        item.quarter = order.quarter
+        item.remarks = source.remarks
+        item.status = 'Approved'
+        item.approved_by = approver.id
+        item.approved_at = order.decided_at
     return created
 
 
@@ -2568,9 +2630,12 @@ def ppmp_orders():
 
     if not has_permission(user, 'ppmp.order.create') or not is_ppmp_office_role(user.role):
         return jsonify({'error': 'Only an approved office user can submit a Wishlist request.'}), 403
-    office = db.session.get(College, user.college_id) if user.college_id else None
-    if office is None or not office.is_active:
+    office = resolve_ppmp_user_office(user, provision_missing=True)
+    if office is None:
         return jsonify({'error': 'Your account must be linked to an active office before submitting a Wishlist request.'}), 409
+    if user.college_id != office.id:
+        user.college_id = office.id
+        db.session.commit()
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify({'error': 'Provide a valid PPMP draft.'}), 400
@@ -2746,9 +2811,13 @@ def transition_ppmp_order(order_id):
     if actor == 'office' and order.requested_by != user.id:
         return jsonify({'error': 'Only the creator can resubmit this PPMP.'}), 403
     returning_reviewer = ppmp_order_return_reviewer(order) if order.status == 'Returned' else None
-    resume_status = 'Pending Admin Approval' if returning_reviewer == 'ADMIN' else 'Submitted'
+    resume_status = (
+        'Submitted' if order.workflow_official
+        else 'Pending Admin Approval' if returning_reviewer == 'ADMIN' else 'Submitted'
+    )
     transitions = {
         ('office', 'Draft', 'submit'): 'Submitted',
+        ('office', 'Awaiting Finalization', 'submit'): 'Submitted',
         ('office', 'Returned', 'submit'): resume_status,
         ('ADMIN', 'Pending Admin Approval', 'approve'): 'Approved',
         ('ADMIN', 'Pending Admin Approval', 'return'): 'Returned',
@@ -2771,6 +2840,20 @@ def transition_ppmp_order(order_id):
     target = transitions.get((actor, order.status, action))
     if target is None:
         return jsonify({'error': 'This Wishlist request transition is not allowed.'}), 409
+    if action == 'approve' and actor == 'ADMIN' and order.workflow_official:
+        if order.ppmp_document_number == 1:
+            target = 'Awaiting Finalization'
+        elif order.ppmp_document_number == 2:
+            target = 'Approved'
+        else:
+            return jsonify({'error': 'Official PPMP must be document No. 1 (Indicative) or No. 2 (Final).'}), 409
+    if action == 'submit' and order.workflow_official:
+        if order.status == 'Draft' and order.ppmp_document_number != 1:
+            return jsonify({'error': 'Submit the initial PPMP as Indicative PPMP No. 1.'}), 409
+        if order.status == 'Awaiting Finalization' and order.ppmp_document_number != 2:
+            return jsonify({'error': 'Update this approved Indicative PPMP to Final PPMP No. 2 before resubmitting.'}), 409
+        if order.status == 'Returned' and order.ppmp_document_number not in {1, 2}:
+            return jsonify({'error': 'Resubmitted official PPMP must be No. 1 or No. 2.'}), 409
     auto_returned = False
     missing_fields = ppmp_request_report_missing_fields(order) if action in {'submit', 'approve'} else []
     if action == 'approve' and actor == 'ADMIN' and missing_fields:
@@ -2795,14 +2878,19 @@ def transition_ppmp_order(order_id):
     if action == 'submit':
         order.return_stage = returning_reviewer
         order.submitted_at = datetime.utcnow()
+        order.decided_by = None
+        order.decided_at = None
     if note:
         order.admin_note = note
     materialized = 0
-    if target in {'Approved', 'Rejected', 'Completed'}:
+    if target in {'Awaiting Finalization', 'Approved', 'Rejected', 'Completed'}:
         order.decided_by = user.id
         order.decided_at = datetime.utcnow()
     if target == 'Approved':
-        materialized = materialize_approved_ppmp_order(order, user)
+        materialized = materialize_approved_ppmp_order(
+            order, user,
+            synchronize_existing=bool(order.workflow_official and order.ppmp_document_number == 2),
+        )
     if note:
         db.session.add(PPMPComment(
             wishlist_order_id=order.id,
@@ -2825,8 +2913,24 @@ def transition_ppmp_order(order_id):
         'items': [ppmp_request_report_item(item, order) for item in order.items],
     })
     notify_ppmp_order_update(order, action, actor, note)
+    auto_app = None
+    auto_consolidation_error = None
+    if target == 'Approved' and order.workflow_official and order.ppmp_document_number == 2:
+        try:
+            with db.session.begin_nested():
+                auto_app = auto_consolidate_final_ppmps(order.fiscal_year, user)
+        except (IntegrityError, ValueError) as error:
+            auto_consolidation_error = str(error)
+            audit('ppmp_order', order.id, 'AUTO_CONSOLIDATION_PENDING', {
+                'fiscal_year': order.fiscal_year, 'error': auto_consolidation_error,
+            })
     db.session.commit()
-    return jsonify(dict(order.to_dict(), auto_returned=auto_returned))
+    result = dict(order.to_dict(), auto_returned=auto_returned)
+    if auto_app:
+        result['consolidated_app'] = {'id': auto_app.id, 'status': auto_app.status}
+    if auto_consolidation_error:
+        result['auto_consolidation_error'] = auto_consolidation_error
+    return jsonify(result)
 
 
 @app.route('/api/ppmp-orders/<int:order_id>/comments', methods=['GET', 'POST'])
@@ -3024,7 +3128,10 @@ def ppmp_request_report_payload(order, user):
         'return_stage': ppmp_order_return_reviewer(order) if order.status == 'Returned' else order.return_stage,
         'return_note': order.admin_note if order.status == 'Returned' else None,
         'requester_name': order.requester.full_name if order.requester else '',
-        'can_submit': editable and (order.workflow_official or order.status == 'Returned'),
+        'can_submit': editable and (
+            not order.workflow_official or order.status != 'Awaiting Finalization'
+            or order.ppmp_document_number == 2
+        ) and (order.workflow_official or order.status == 'Returned'),
         'is_complete': not missing_fields,
         'missing_fields': missing_fields,
         'workflow_official': bool(order.workflow_official),
@@ -3192,6 +3299,12 @@ def update_ppmp_request_report_items(order_id):
         document_number = data['ppmp_document_number']
         if type(document_number) is not int or not 1 <= document_number <= 999999999:
             return jsonify({'error': 'PPMP document number must be a positive whole number.'}), 400
+        if order.workflow_official and document_number != order.ppmp_document_number:
+            if not (order.status == 'Awaiting Finalization'
+                    and order.ppmp_document_number == 1 and document_number == 2):
+                return jsonify({
+                    'error': 'Only an Admin-approved Indicative PPMP No. 1 can be updated to Final PPMP No. 2.'
+                }), 409
     if not rows and document_number is None:
         return jsonify({'error': 'Provide at least one report change to save.'}), 400
     validated_rows = []
@@ -3272,7 +3385,7 @@ def build_ppmp_order_report(orders):
             source_distribution[label] += 1
     pending_statuses = {
         'Requested', 'Pending Admin Approval',
-        'Submitted', 'EO Review', 'Procurement Review', 'Returned',
+        'Submitted', 'EO Review', 'Procurement Review', 'Returned', 'Awaiting Finalization',
     }
     approved_statuses = {'Approved', 'Processing', 'Completed'}
     return {
@@ -3678,6 +3791,15 @@ def ppmp_dashboard_data():
         order_query = order_query.filter_by(office_id=user.college_id)
     wishlist_order_counts = {status: order_query.filter_by(status=status).count()
                              for status in PPMPOrder.STATUSES}
+    final_source_ids = {
+        row[0] for row in db.session.query(PPMPOrderItem.ppmp_item_id).join(
+            PPMPOrder, PPMPOrder.id == PPMPOrderItem.order_id,
+        ).filter(
+            PPMPOrderItem.ppmp_item_id.in_(item_ids or [-1]),
+            PPMPOrder.workflow_official.is_(True), PPMPOrder.status == 'Approved',
+            PPMPOrder.ppmp_document_number == 2,
+        ).all()
+    }
     return jsonify({
         'total_items': len(items),
         'total_record_items': total_record_items,
@@ -3690,11 +3812,11 @@ def ppmp_dashboard_data():
             wishlist_order_counts.get(status, 0)
             for status in (
                 'Requested', 'Pending Admin Approval',
-                'Submitted', 'EO Review', 'Procurement Review', 'Returned',
+                'Submitted', 'EO Review', 'Procurement Review', 'Returned', 'Awaiting Finalization',
             )
         ),
         'wishlist_order_counts': wishlist_order_counts,
-        'eligible_for_consolidation': sum(1 for item in items if item.status == 'Approved' and item.id not in consolidated_ids),
+        'eligible_for_consolidation': sum(1 for item in items if item.status == 'Approved' and item.id in final_source_ids and item.id not in consolidated_ids),
         'consolidated_items': len(consolidated_ids),
         'recent_records': [record.to_dict(include_items=False) for record in records[:5]],
         'recent_items': [item.to_dict() for item in sorted(items, key=lambda row: row.updated_at or row.created_at, reverse=True)[:5]],
@@ -3704,7 +3826,7 @@ def ppmp_dashboard_data():
 from flask import has_request_context
 from models import APPBatchLink, APPItemContribution, APPWorkflowRegistry
 from procurement_workflow import (
-    APP_OPEN_STATUSES, APP_REVIEW_ROLES, INSTITUTION_OFFICE,
+    APP_REVIEW_ROLES, INSTITUTION_OFFICE,
     app_snapshot, apply_contribution_update, export_office_contributions,
     export_project_title, materialize_batch_sources, precise_number,
     prepare_contribution_update, source_snapshot, validate_row_allocations,
@@ -3972,6 +4094,201 @@ def consolidation_batch_dict(batch):
     }
 
 
+def final_ppmp_readiness(fiscal_year):
+    """Return one final-PPMP readiness row for every active submitting office."""
+    offices = [office for office in College.query.filter_by(is_active=True).order_by(College.code)
+               if is_ppmp_office_role(office.code)]
+    rows = []
+    for office in offices:
+        registry = OfficialPPMP.query.filter_by(
+            office_id=office.id, fiscal_year=fiscal_year,
+        ).first()
+        order = registry.source_order if registry else None
+        ready = bool(
+            order and order.workflow_official and order.status == 'Approved'
+            and order.ppmp_document_number == 2 and order.items
+            and all(item.ppmp_item_id for item in order.items)
+            and all(item.ppmp_item and item.ppmp_item.status == 'Approved' for item in order.items)
+        )
+        stage_labels = {
+            'Draft': 'Office preparation',
+            'Submitted': 'Procurement approval',
+            'EO Review': 'Procurement approval',
+            'Procurement Review': 'Procurement approval',
+            'Pending Admin Approval': 'Administrator approval',
+            'Awaiting Finalization': 'Requester finalization of Indicative No. 1',
+            'Returned': 'Requester revision',
+            'Rejected': 'Rejected',
+            'Approved': 'Final PPMP approved' if order and order.ppmp_document_number == 2
+                else 'Indicative No. 1 approved; awaiting finalization',
+        }
+        rows.append({
+            'office_id': office.id, 'office_code': office.code, 'office_name': office.name,
+            'order_id': order.id if order else None,
+            'reference_number': order.reference_number if order else None,
+            'status': order.status if order else 'Not Started',
+            'stage': stage_labels.get(order.status, order.status) if order else 'PPMP not submitted',
+            'ppmp_document_number': order.ppmp_document_number if order else None,
+            'ppmp_type': ('Final' if order.ppmp_document_number == 2 else 'Indicative') if order else None,
+            'item_count': len(order.items) if order else 0,
+            'total_budget': float(sum((Decimal(item.estimated_budget or 0) for item in order.items), Decimal('0.00'))) if order else 0,
+            'is_final_approved': ready,
+        })
+    return rows
+
+
+def auto_consolidate_final_ppmps(fiscal_year, actor):
+    """Create the institution-wide consolidation and APP draft once all offices finish No. 2."""
+    office_rows = final_ppmp_readiness(fiscal_year)
+    if not office_rows or not all(row['is_final_approved'] for row in office_rows):
+        return None
+    registries = OfficialPPMP.query.filter_by(fiscal_year=fiscal_year).all()
+    submitting_office_ids = {row['office_id'] for row in office_rows}
+    orders = [registry.source_order for registry in registries
+              if registry.office_id in submitting_office_ids and registry.source_order]
+    source_items = [source.ppmp_item for order in orders for source in order.items]
+    if not source_items or any(item is None or item.status != 'Approved' for item in source_items):
+        raise ValueError('Every approved Final PPMP No. 2 must have approved source items before consolidation.')
+    source_ids = {item.id for item in source_items}
+    existing_annual = AnnualProcurementPlan.query.filter_by(
+        office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
+    ).with_for_update().first()
+    if existing_annual and existing_annual.status in {'Finalized', 'Approved', 'Rejected', 'Imported'}:
+        included = {row.source_ppmp_item_id for row in APPItemContribution.query.join(
+            APPItem, APPItem.id == APPItemContribution.app_item_id,
+        ).filter(APPItem.app_id == existing_annual.id).all()}
+        if source_ids.issubset(included):
+            return existing_annual
+        raise ValueError('A closed APP record already exists for this fiscal year and cannot accept new PPMP sources.')
+
+    prior_sources = ConsolidationSource.query.filter(
+        ConsolidationSource.ppmp_item_id.in_(source_ids),
+    ).all()
+    source_batch_ids = {row.batch_id for row in prior_sources}
+    already_batched_ids = {row.ppmp_item_id for row in prior_sources}
+    unbatched_ids = source_ids - already_batched_ids
+    auto_batch = ConsolidationBatch.query.filter_by(
+        fiscal_year=fiscal_year, app_cycle='AUTO-FINAL',
+    ).with_for_update().first()
+    if unbatched_ids:
+        if auto_batch is None:
+            auto_batch = ConsolidationBatch(
+                fiscal_year=fiscal_year, app_cycle='AUTO-FINAL', created_by=actor.id,
+            )
+            db.session.add(auto_batch)
+            db.session.flush()
+        existing_auto_ids = {row.ppmp_item_id for row in ConsolidationSource.query.filter_by(
+            batch_id=auto_batch.id,
+        ).all()}
+        for source_id in sorted(unbatched_ids - existing_auto_ids):
+            db.session.add(ConsolidationSource(batch_id=auto_batch.id, ppmp_item_id=source_id))
+        source_batch_ids.add(auto_batch.id)
+    if auto_batch is not None:
+        source_batch_ids.add(auto_batch.id)
+    if not source_batch_ids:
+        raise ValueError('No final PPMP sources are available for consolidation.')
+    db.session.flush()
+
+    links = APPBatchLink.query.filter(APPBatchLink.batch_id.in_(source_batch_ids)).all()
+    linked_plan_ids = {row.app_id for row in links}
+    if len(linked_plan_ids) > 1:
+        raise ValueError('Final PPMP sources are attached to more than one APP record; administrator review is required.')
+    plan = links[0].app if links else None
+    if plan is None:
+        plan = AnnualProcurementPlan.query.filter(
+            AnnualProcurementPlan.consolidation_batch_id.in_(source_batch_ids),
+        ).with_for_update().first()
+    if plan is None:
+        plan = existing_annual
+    if plan and plan.status in {'Finalized', 'Approved', 'Rejected', 'Imported'}:
+        return plan
+    if plan is None:
+        plan = AnnualProcurementPlan(
+            office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
+            consolidation_batch_id=min(source_batch_ids), source_type='CONSOLIDATION',
+            workflow_version=2, revision=1,
+            source_details={'institution_wide': True, 'automatic_consolidation': True},
+            created_by=actor.id,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        registry = APPWorkflowRegistry.query.filter_by(fiscal_year=fiscal_year, sequence=0).first()
+        if registry is None:
+            db.session.add(APPWorkflowRegistry(app_id=plan.id, fiscal_year=fiscal_year, sequence=0))
+    elif plan.workflow_version != 2:
+        raise ValueError('An older APP record already exists for this fiscal year and needs administrator review.')
+
+    if plan.status not in {'Draft', 'Returned', 'Submitted', 'Under Review', 'For Admin Approval'}:
+        raise ValueError('The existing APP record is not open for the automatic consolidated draft.')
+    for batch_id in sorted(source_batch_ids):
+        batch_link = APPBatchLink.query.filter_by(batch_id=batch_id).first()
+        if batch_link and batch_link.app_id != plan.id:
+            raise ValueError('A final PPMP consolidation source is already attached to a different APP record.')
+        if not batch_link:
+            db.session.add(APPBatchLink(app=plan, batch_id=batch_id, added_by=actor.id))
+    db.session.flush()
+    included_ids = {row.source_ppmp_item_id for row in APPItemContribution.query.join(
+        APPItem, APPItem.id == APPItemContribution.app_item_id,
+    ).filter(APPItem.app_id == plan.id).all()}
+    batch_sources = [row for row in ConsolidationSource.query.filter(
+        ConsolidationSource.batch_id.in_(source_batch_ids),
+        ConsolidationSource.ppmp_item_id.in_(source_ids),
+    ).order_by(ConsolidationSource.id).all() if row.ppmp_item_id not in included_ids]
+    if batch_sources:
+        if plan.items:
+            plan.revision = (plan.revision or 1) + 1
+        materialize_app_items(plan, batch_sources, actor)
+        sync_app_mode_tasks(plan)
+        app_audit_snapshot(plan, 'AUTO_FINAL_PPMP_CONSOLIDATED', {
+            'fiscal_year': fiscal_year, 'source_ppmp_item_ids': [row.ppmp_item_id for row in batch_sources],
+            'required_office_ids': sorted(submitting_office_ids),
+        })
+        notify_app_offices(
+            plan, 'Final PPMPs consolidated into APP draft',
+            f'All active offices submitted and received approval for Final PPMP No. 2. APP #{plan.id}, FY {fiscal_year}, is ready for Admin review.',
+        )
+    return plan
+
+
+@app.route('/api/consolidation-readiness', methods=['GET', 'POST'])
+@roles_required('ADMIN')
+def consolidation_readiness():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        fiscal_year = data.get('fiscal_year')
+        if type(fiscal_year) is not int or not 2000 <= fiscal_year <= 9999:
+            return jsonify({'error': 'Fiscal year must be a valid whole number.'}), 400
+        try:
+            plan = auto_consolidate_final_ppmps(fiscal_year, current_session_user())
+            if plan is None:
+                return jsonify({'error': 'Every active office and college must receive final Administrator approval for Final PPMP No. 2 first.'}), 409
+            db.session.commit()
+        except (IntegrityError, ValueError) as error:
+            db.session.rollback()
+            return jsonify({'error': str(error)}), 409
+        return jsonify({'app_id': plan.id, 'status': plan.status}), 201
+    raw_year = request.args.get('fiscal_year')
+    fiscal_year = request.args.get('fiscal_year', type=int)
+    if raw_year and fiscal_year is None:
+        return jsonify({'error': 'Fiscal year must be an integer.'}), 400
+    years = {datetime.utcnow().year}
+    years.update(row[0] for row in db.session.query(OfficialPPMP.fiscal_year).distinct().all())
+    years.update(row[0] for row in db.session.query(AnnualProcurementPlan.fiscal_year).distinct().all())
+    fiscal_year = fiscal_year or datetime.utcnow().year
+    offices = final_ppmp_readiness(fiscal_year)
+    final_approved = sum(row['is_final_approved'] for row in offices)
+    plan = AnnualProcurementPlan.query.filter_by(
+        office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
+    ).first()
+    return jsonify({
+        'fiscal_year': fiscal_year, 'fiscal_years': sorted(years), 'offices': offices,
+        'required_offices': len(offices), 'final_approved_offices': final_approved,
+        'all_final_approved': bool(offices) and final_approved == len(offices),
+        'app_id': plan.id if plan else None, 'app_status': plan.status if plan else None,
+        'app_label': 'Final APP Record' if plan and plan.status == 'Finalized' else 'APP Draft' if plan else None,
+    })
+
+
 @app.route('/api/consolidation-eligible')
 @roles_required('ADMIN')
 def consolidation_eligible():
@@ -3986,6 +4303,7 @@ def consolidation_eligible():
         if PPMPOrderItem.query.join(PPMPOrder).filter(
             PPMPOrderItem.ppmp_item_id == item.id,
             PPMPOrder.workflow_official.is_(True), PPMPOrder.status == 'Approved',
+            PPMPOrder.ppmp_document_number == 2,
         ).first()
     })
     if fiscal_year is not None:
@@ -3993,7 +4311,8 @@ def consolidation_eligible():
     items, errors = [], []
     for item in query.order_by(PPMPItem.fiscal_year, PPMPItem.college_id, PPMPItem.id).all():
         source = PPMPOrderItem.query.filter_by(ppmp_item_id=item.id).first()
-        if not source or not source.order.workflow_official or source.order.status != 'Approved':
+        if (not source or not source.order.workflow_official or source.order.status != 'Approved'
+                or source.order.ppmp_document_number != 2):
             continue
         try:
             items.append(consolidation_item_dict(item))
@@ -4002,64 +4321,11 @@ def consolidation_eligible():
     return jsonify({'items': items, 'fiscal_years': years, 'invalid_sources': errors})
 
 
-@app.route("/api/consolidation-batches", methods=["GET", "POST"])
+@app.route("/api/consolidation-batches")
 @roles_required('ADMIN')
 def consolidation_batches():
-    if request.method == "GET":
-        batches = ConsolidationBatch.query.order_by(ConsolidationBatch.created_at.desc()).all()
-        return jsonify([consolidation_batch_dict(batch) for batch in batches])
-    data = request.get_json(silent=True) or {}
-    fiscal_year = data.get('fiscal_year')
-    item_ids = data.get("ppmp_item_ids") or []
-    order_ids = data.get('ppmp_order_ids') or []
-    if (type(fiscal_year) is not int or not 2026 <= fiscal_year <= 9999
-            or not isinstance(item_ids, list) or not isinstance(order_ids, list)
-            or any(type(value) is not int for value in item_ids + order_ids)
-            or not (item_ids or order_ids)):
-        return jsonify({'error': 'Select a fiscal year from 2026 onward and at least one approved PPMP source.'}), 400
-    if order_ids:
-        orders = PPMPOrder.query.filter(PPMPOrder.id.in_(set(order_ids))).order_by(PPMPOrder.id).with_for_update().all()
-        if len(orders) != len(set(order_ids)) or any(
-            not order.workflow_official or order.status != 'Approved' or order.fiscal_year != fiscal_year
-            or not order.items or any(row.ppmp_item_id is None for row in order.items)
-            for order in orders
-        ):
-            return jsonify({'error': 'Select only final approved official PPMPs from this fiscal year.'}), 409
-        item_ids += [row.ppmp_item_id for order in orders for row in order.items]
-    item_ids = sorted(set(item_ids))
-    items = PPMPItem.query.filter(PPMPItem.id.in_(item_ids)).order_by(PPMPItem.id).with_for_update().all()
-    if len(items) != len(item_ids):
-        return jsonify({'error': 'One or more PPMP source items no longer exist.'}), 409
-    if any(item.status != 'Approved' or item.fiscal_year != fiscal_year for item in items):
-        return jsonify({'error': 'Every selected PPMP item must be approved and match the batch fiscal year.'}), 409
-    try:
-        for item in items:
-            source_snapshot(item)
-            source = PPMPOrderItem.query.filter_by(ppmp_item_id=item.id).first()
-            if not source or not source.order.workflow_official or source.order.status != 'Approved':
-                raise ValueError('Every source must belong to a designated, finally approved official PPMP.')
-    except ValueError as error:
-        return jsonify({'error': str(error)}), 400
-    existing = {source.ppmp_item_id for source in ConsolidationSource.query.filter(ConsolidationSource.ppmp_item_id.in_(item_ids)).all()}
-    if existing:
-        return jsonify({"error": "One or more PPMP items have already been consolidated.", "item_ids": sorted(existing)}), 409
-    batch = ConsolidationBatch(fiscal_year=fiscal_year, app_cycle=f'BATCH-{secrets.token_hex(12).upper()}', created_by=current_session_user().id)
-    db.session.add(batch)
-    try:
-        db.session.flush()
-        for item in items:
-            db.session.add(ConsolidationSource(batch_id=batch.id, ppmp_item_id=item.id))
-        db.session.flush()
-        audit('consolidation_batch', batch.id, 'CREATE', {
-            'ppmp_item_ids': item_ids, 'sources': [source_snapshot(item) for item in items],
-        })
-        notify_offices({item.college_id for item in items}, 'PPMP selected for APP consolidation',
-                       f'Admin included your approved PPMP items in consolidation batch #{batch.id}, FY {fiscal_year}.')
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({'error': 'These PPMP sources were consolidated concurrently. Refresh the eligible list.'}), 409
-    return jsonify(consolidation_batch_dict(batch)), 201
+    batches = ConsolidationBatch.query.order_by(ConsolidationBatch.created_at.desc()).all()
+    return jsonify([consolidation_batch_dict(batch) for batch in batches])
 
 
 @app.route("/api/apps", methods=["GET", "POST"])
@@ -4076,79 +4342,9 @@ def annual_procurement_plans():
         return jsonify(records)
     if user is None or user.role != 'ADMIN':
         return jsonify({'error': 'Only Admin may create or extend consolidated APP drafts.'}), 403
-    data = request.get_json(silent=True) or {}
-    batch_id = data.get('batch_id', data.get('consolidation_batch_id'))
-    batch = ConsolidationBatch.query.filter_by(id=batch_id).with_for_update().first() if type(batch_id) is int else None
-    if batch is None or data.get('plan_type', 'APP') != 'APP':
-        return jsonify({'error': 'Select a valid consolidation batch for the institution-wide APP.'}), 400
-    if data.get('fiscal_year', batch.fiscal_year) != batch.fiscal_year:
-        return jsonify({'error': 'APP and consolidation fiscal years must match.'}), 400
-    if APPBatchLink.query.filter_by(batch_id=batch.id).first() or AnnualProcurementPlan.query.filter_by(consolidation_batch_id=batch.id).first():
-        return jsonify({'error': 'This batch has already been attached to an APP.'}), 409
-    batch_sources = ConsolidationSource.query.filter_by(batch_id=batch.id).order_by(ConsolidationSource.id).all()
-    if not batch_sources:
-        return jsonify({'error': 'The selected consolidation batch contains no approved source items.'}), 400
-    source_ids = [source.ppmp_item_id for source in batch_sources]
-    PPMPItem.query.filter(PPMPItem.id.in_(source_ids)).order_by(PPMPItem.id).with_for_update().all()
-    if APPItemContribution.query.filter(APPItemContribution.source_ppmp_item_id.in_(source_ids)).first():
-        return jsonify({'error': 'This batch contains a source already included in an APP.'}), 409
-    plan = (AnnualProcurementPlan.query.filter(
-        AnnualProcurementPlan.workflow_version == 2,
-        AnnualProcurementPlan.fiscal_year == batch.fiscal_year,
-        AnnualProcurementPlan.status.in_(APP_OPEN_STATUSES),
-    ).order_by(AnnualProcurementPlan.id.desc()).with_for_update().first())
-    extending = plan is not None
-    try:
-        if plan is None:
-            registries = APPWorkflowRegistry.query.filter_by(fiscal_year=batch.fiscal_year).order_by(APPWorkflowRegistry.sequence).with_for_update().all()
-            sequence = max((registry.sequence for registry in registries), default=-1) + 1
-            annual = next((registry.app for registry in registries if registry.sequence == 0), None)
-            if sequence and (annual is None or annual.status not in {'Approved', 'Finalized'}):
-                return jsonify({'error': 'The annual APP must be finally approved before creating a supplemental APP.'}), 409
-            plan = AnnualProcurementPlan(
-                office=INSTITUTION_OFFICE if not sequence else f'{INSTITUTION_OFFICE} - SUPPLEMENTAL #{sequence}',
-                fiscal_year=batch.fiscal_year, plan_type='APP', workflow_version=2,
-                consolidation_batch_id=batch.id, source_type='CONSOLIDATION', revision=1,
-                supplemental_parent_id=annual.id if sequence else None,
-                source_details={'institution_wide': True, 'supplemental_number': sequence},
-                created_by=user.id, remarks=str(data.get('remarks') or '').strip() or None,
-            )
-            db.session.add(plan)
-            db.session.flush()
-            db.session.add(APPWorkflowRegistry(app_id=plan.id, fiscal_year=batch.fiscal_year, sequence=sequence))
-        else:
-            plan.revision = (plan.revision or 1) + 1
-        db.session.add(APPBatchLink(app=plan, batch_id=batch.id, added_by=user.id))
-        db.session.flush()
-        previous_item_ids = {item.id for item in plan.items}
-        snapshots = materialize_app_items(plan, batch_sources, user)
-        if extending and plan.status in {'Submitted', 'Under Review', 'For Admin Approval'}:
-            pending = set((plan.source_details or {}).get('pending_item_ids', []))
-            pending.update(item.id for item in plan.items if item.id not in previous_item_ids
-                           and app_item_validation_error(item, require_procurement_mode=False))
-            plan.source_details = {**(plan.source_details or {}), 'pending_item_ids': sorted(pending)}
-        sync_app_mode_tasks(plan)
-        app_audit_snapshot(plan, 'APP_BATCH_ADDED' if extending else 'APP_DRAFT_CREATED', {
-            'consolidation_batch_id': batch.id,
-            'source_ppmp_item_ids': source_ids, 'added_sources': snapshots,
-            'continuing_reviewer': expected_app_reviewer(plan) if extending else None,
-            'note': str(data.get('note') or '').strip() or None,
-        })
-        if extending and plan.status in {'Under Review', 'For Admin Approval', 'Submitted'}:
-            notify_roles((expected_app_reviewer(plan),), 'APP batch added during review',
-                         f'{app_notification_label(plan)} includes new source items and requires your review. Completed reviews remain recorded.',
-                         target_type='app', target_id=plan.id, action_stage=f'REVIEW:{expected_app_reviewer(plan)}')
-        notify_app_offices(plan, 'APP batch added' if extending else 'APP draft prepared',
-                           f'{app_notification_label(plan)} now includes approved PPMP items from your office or college. '
-                           f'Current status: {plan.status}.')
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({'error': 'Another action attached this batch or created this fiscal-year APP. Refresh and try again.'}), 409
-    except ValueError as error:
-        db.session.rollback()
-        return jsonify({'error': str(error)}), 400
-    return jsonify(app_detail_dict(plan)), 200 if extending else 201
+    return jsonify({
+        'error': 'APP drafts are generated automatically after every active office receives approval for Final PPMP No. 2.'
+    }), 409
 
 
 @app.route('/api/apps/metadata')
@@ -4608,6 +4804,8 @@ def export_app_pdf(app_id):
         return jsonify({'error': 'APP record not found.'}), 404
     if not can_access_app(user, plan):
         return jsonify({'error': 'You are not authorized to export this APP.'}), 403
+    if plan.workflow_version >= 2 and plan.status != 'Finalized':
+        return jsonify({'error': 'Only a Final APP Record can be exported.'}), 409
     output = io.BytesIO()
     document = SimpleDocTemplate(
         output, pagesize=landscape(A3), rightMargin=8*mm, leftMargin=8*mm,
@@ -4637,7 +4835,7 @@ def export_app_pdf(app_id):
         rows.append([cell(section.name)] + [''] * 11)
         for item in section.items:
             rows.append([
-                cell(export_project_title(item)), cell(export_office_contributions(item)), cell(item.general_description),
+                cell(export_project_title(item)), cell('ISU Cauayan Campus' if plan.status == 'Finalized' else export_office_contributions(item)), cell(item.general_description),
                 cell(item.mode_of_procurement), cell('Yes' if item.early_procurement_activity else 'No'
                                                      if item.early_procurement_activity is False else ''),
                 cell(item.bid_evaluation_criteria), cell(APPItem.month_label(item.procurement_start)),
@@ -4713,6 +4911,8 @@ def export_app_excel(app_id):
         return jsonify({'error': 'APP record not found.'}), 404
     if not can_access_app(user, plan):
         return jsonify({'error': 'You are not authorized to export this APP.'}), 403
+    if plan.workflow_version >= 2 and plan.status != 'Finalized':
+        return jsonify({'error': 'Only a Final APP Record can be exported.'}), 409
     workbook, worksheet = Workbook(), None
     worksheet = workbook.active
     worksheet.title = 'APP Digital Table'
@@ -4744,7 +4944,7 @@ def export_app_excel(app_id):
         worksheet.cell(section_row, 1).font = Font(bold=True)
         for item in section.items:
             worksheet.append([
-                export_project_title(item), export_office_contributions(item), item.general_description,
+                export_project_title(item), 'ISU Cauayan Campus' if plan.status == 'Finalized' else export_office_contributions(item), item.general_description,
                 item.mode_of_procurement,
                 'Yes' if item.early_procurement_activity else 'No' if item.early_procurement_activity is False else '',
                 item.bid_evaluation_criteria, APPItem.month_label(item.procurement_start),

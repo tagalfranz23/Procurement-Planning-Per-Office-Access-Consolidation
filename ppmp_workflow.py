@@ -16,7 +16,7 @@ from models import (
 def can_edit_official_ppmp(user, order):
     return bool(user and order.requested_by == user.id
                 and order.office_id == user.college_id
-                and order.status in {'Draft', 'Returned'})
+                and order.status in {'Draft', 'Returned', 'Awaiting Finalization'})
 
 
 def workflow_history(entity_type, entity_id):

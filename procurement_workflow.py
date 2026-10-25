@@ -170,8 +170,8 @@ def materialize_batch_sources(plan, batch_sources, creator):
             raise ValueError('Only designated official approved PPMPs can supply new consolidated APPs.')
         if snapshot['is_official']:
             order = PPMPOrderItem.query.filter_by(ppmp_item_id=ppmp.id).first().order
-            if order.status != 'Approved':
-                raise ValueError('The official source PPMP must be finally approved before consolidation.')
+            if order.status != 'Approved' or order.ppmp_document_number != 2:
+                raise ValueError('Only an approved Final PPMP No. 2 can be consolidated into the APP.')
         key = strict_merge_key(snapshot)
         item = rows_by_key.get(key)
         if item is None:
