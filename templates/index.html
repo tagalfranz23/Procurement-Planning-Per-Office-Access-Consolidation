@@ -1296,7 +1296,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-request-document">
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
       {% include 'partials/report-letterhead.html' %}
-      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" checked disabled>Final</label></div></div></div></div>
+      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" checked disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" disabled>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="card-body" id="ppmp-report-source-note"></div>
       <div class="card-body ppmp-review-feedback" id="ppmp-report-review-feedback" role="status" style="background:#fffbeb;border-left:3px solid var(--gold)" hidden></div>
@@ -2649,8 +2649,9 @@ function renderPPMPRequestReport(report) {
   document.getElementById('ppmp-report-fiscal-year').textContent = report.fiscal_year;
   document.getElementById('ppmp-report-office').textContent = report.end_user_or_implementing_unit;
   document.getElementById('ppmp-report-document-number').value = report.ppmp_document_number || 1;
-  document.getElementById('ppmp-report-indicative').checked = indicative || !['Approved', 'Processing', 'Completed', 'Consolidated'].includes(report.status);
-  document.getElementById('ppmp-report-final').checked = !document.getElementById('ppmp-report-indicative').checked;
+  // PPMP approval does not finalize the plan; PPMP reports remain Indicative.
+  document.getElementById('ppmp-report-indicative').checked = true;
+  document.getElementById('ppmp-report-final').checked = false;
   document.getElementById('ppmp-report-source-note').textContent = indicative ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.' : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}`;
   document.getElementById('ppmp-report-workflow-actions').innerHTML = (!indicative && report.can_submit ? `<button class="btn btn-primary" type="button" data-requires-complete="true" title="Complete and save all required fields before submitting" onclick="submitOpenPPMPReport(this)">${report.status === 'Returned' ? 'Resubmit PPMP' : 'Submit PPMP'}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
   renderPPMPReturnFeedback(report);
@@ -4272,11 +4273,11 @@ function renderPPMPRecordWorkspace() {
   const editable = false; // Legacy planning document content remains in its historical state.
   const canRequest = false; // New submissions use the official PPMP, while historical planning records remain readable.
   const orderedIds = new Set(wishlistOrders.flatMap(order => order.items.map(item => item.wishlist_item_id)).filter(Boolean));
-  const isFinal = ['Approved', 'Consolidated'].includes(record.status);
   document.getElementById('ppmp-record-report-fiscal-year').textContent = record.fiscal_year;
   document.getElementById('ppmp-record-report-office').textContent = record.office_name || record.office_code || '';
-  document.getElementById('ppmp-record-indicative').checked = !isFinal;
-  document.getElementById('ppmp-record-final').checked = isFinal;
+  // Approval status is a workflow state, not a change from Indicative to Final.
+  document.getElementById('ppmp-record-indicative').checked = true;
+  document.getElementById('ppmp-record-final').checked = false;
   const reportItems = (record.items || []).filter(item => item.item_status !== 'Removed');
   document.getElementById('ppmp-record-report-items').innerHTML = reportItems.length ? reportItems.map(item => {
     const schedule = item.schedule_as_needed;
