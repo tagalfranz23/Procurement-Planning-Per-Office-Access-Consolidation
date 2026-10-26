@@ -1189,7 +1189,7 @@ td.center{text-align:center}
     <div class="card"><div class="card-header"><span class="card-title">Current PPMP Items</span></div><div class="card-body">
       <div class="filter-row"><input class="filter-input" id="order-year" oninput="renderOrderDraft()" type="number" min="2000" max="2100" aria-label="Fiscal Year" placeholder="Input Fiscal Year"><select class="filter-select" id="order-quarter"></select></div>
       <div class="table-wrap mt-12"><table><thead><tr><th>Item</th><th>Source</th><th>Quantity</th><th>Unit Cost</th><th>Total</th><th>Action</th></tr></thead><tbody id="order-draft-list"><tr><td colspan="6">Select items from the CSE Master List or use Add Item.</td></tr></tbody></table></div>
-      <div class="management-actions mt-12"><button class="btn btn-primary" id="submit-order-button" onclick="submitPPMPOrder(this)" disabled>Create PPMP Draft</button></div>
+      <div class="management-actions mt-12"><button class="btn btn-primary" id="submit-order-button" data-permission="ppmp.order.create" hidden onclick="submitPPMPOrder(this)" disabled>Create PPMP Draft</button></div>
     </div></div>
   </section>
   {% endif %}
@@ -2691,7 +2691,19 @@ function ppmpReportReviewActions(report) {
   if (currentUser.role === 'ADMIN' && !report.is_official) {
     buttons.push(`<button class="btn btn-primary" type="button" onclick="designateOfficialPPMP(${report.id},this)">Set Official PPMP</button>`);
   }
-  const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(report.status)) || (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(report.status));
+  const procurementOwnSubmission = currentUser.role === 'PROCUREMENT'
+    && report.requested_by === currentUser.id
+    && report.office_code === 'PROCUREMENT';
+  const procurementMayReview = currentUser.role === 'PROCUREMENT'
+    && ['Submitted', 'EO Review'].includes(report.status)
+    && !procurementOwnSubmission;
+  const adminMayReviewProcurementSubmission = currentUser.role === 'ADMIN'
+    && report.requester_role === 'PROCUREMENT'
+    && report.office_code === 'PROCUREMENT'
+    && report.status === 'Submitted';
+  const mayReview = procurementMayReview
+    || adminMayReviewProcurementSubmission
+    || (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(report.status));
   if (mayReview) {
     const approveLabel = currentUser.role === 'PROCUREMENT'
       ? 'Approve & Forward to Admin'
@@ -4052,7 +4064,10 @@ function ppmpOrderActions(order) {
   if (!currentUser) return '';
   const buttons = [`<button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id})">Open</button>`];
   const official = Boolean(order.workflow_official || order.is_official);
-  const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(order.status)) ||
+  const procurementOwnSubmission = currentUser.role === 'PROCUREMENT'
+    && order.requested_by === currentUser.id
+    && order.office_code === 'PROCUREMENT';
+  const mayReview = (currentUser.role === 'PROCUREMENT' && ['Submitted', 'EO Review'].includes(order.status) && !procurementOwnSubmission) ||
     (currentUser.role === 'ADMIN' && ['Pending Admin Approval', 'Procurement Review'].includes(order.status));
   if (mayReview) {
     const approveLabel = currentUser.role === 'PROCUREMENT'

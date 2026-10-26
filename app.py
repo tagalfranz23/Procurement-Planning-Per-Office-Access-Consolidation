@@ -148,7 +148,7 @@ ROLE_PERMISSIONS = {
            'ppmp.reject', 'ppmp.comment', 'ppmp.report', 'ppmp.export', 'survey.manage',
            'app.view', 'app.review', 'app.return', 'app.report', 'app.export'},
     'PROCUREMENT': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.record.review', 'ppmp.review',
-                    'ppmp.return', 'ppmp.reject', 'ppmp.approve',
+                    'ppmp.order.create', 'ppmp.return', 'ppmp.reject', 'ppmp.approve',
                     'ppmp.comment', 'ppmp.report', 'ppmp.export'},
     'BUDGET': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.review', 'ppmp.return', 'ppmp.comment', 'ppmp.report',
                'app.view', 'app.review', 'app.return', 'app.reject', 'app.report', 'app.export',
@@ -227,7 +227,7 @@ def resolve_ppmp_user_office(user, *, provision_missing=False):
     office = College.query.filter_by(code=office_code).first()
     if office is not None:
         return office if office.is_active else None
-    if not provision_missing or office_code not in PPMP_OFFICE_ROLES:
+    if not provision_missing or (office_code not in PPMP_OFFICE_ROLES and office_code != 'PROCUREMENT'):
         return None
 
     office = College(
@@ -2628,11 +2628,14 @@ def ppmp_orders():
             query = query.filter_by(status=status)
         return jsonify([order.to_dict() for order in query.order_by(PPMPOrder.submitted_at.desc()).all()])
 
-    if not has_permission(user, 'ppmp.order.create') or not is_ppmp_office_role(user.role):
-        return jsonify({'error': 'Only an approved office user can submit a Wishlist request.'}), 403
+    may_create_for_office = is_ppmp_office_role(user.role) or user.role == 'PROCUREMENT'
+    if not has_permission(user, 'ppmp.order.create') or not may_create_for_office:
+        return jsonify({'error': 'Your account is not allowed to create a PPMP draft.'}), 403
     office = resolve_ppmp_user_office(user, provision_missing=True)
     if office is None:
-        return jsonify({'error': 'Your account must be linked to an active office before submitting a Wishlist request.'}), 409
+        return jsonify({'error': 'Your account must be linked to an active office before creating a PPMP draft.'}), 409
+    if user.role == 'PROCUREMENT' and office.code != 'PROCUREMENT':
+        return jsonify({'error': 'The Procurement account can create PPMP drafts only for the Procurement office.'}), 403
     if user.college_id != office.id:
         user.college_id = office.id
         db.session.commit()
@@ -2825,7 +2828,14 @@ def transition_ppmp_order(order_id):
         return jsonify({'error': 'A reason is required when returning or rejecting a Wishlist request.'}), 400
     if note and len(note) > 5000:
         return jsonify({'error': 'The review note must not exceed 5,000 characters.'}), 400
-    actor = 'office' if is_ppmp_office_role(user.role) else ('EO' if user.role == 'AA' else user.role)
+    procurement_requester = bool(
+        user.role == 'PROCUREMENT'
+        and order.requested_by == user.id
+        and order.office_id == user.college_id
+        and order.office
+        and order.office.code == 'PROCUREMENT'
+    )
+    actor = 'office' if is_ppmp_office_role(user.role) or procurement_requester else ('EO' if user.role == 'AA' else user.role)
     if actor == 'office' and order.requested_by != user.id:
         return jsonify({'error': 'Only the creator can resubmit this PPMP.'}), 403
     returning_reviewer = ppmp_order_return_reviewer(order) if order.status == 'Returned' else None
@@ -2852,6 +2862,17 @@ def transition_ppmp_order(order_id):
         ('ADMIN', 'Approved', 'process'): 'Processing',
         ('ADMIN', 'Processing', 'complete'): 'Completed',
     }
+    procurement_owner_submission = bool(
+        order.requester
+        and order.requester.role == 'PROCUREMENT'
+        and order.office
+        and order.office.code == 'PROCUREMENT'
+    )
+    if procurement_owner_submission:
+        # Procurement cannot review its own office's submission.
+        transitions[('ADMIN', 'Submitted', 'approve')] = 'Approved'
+        transitions[('ADMIN', 'Submitted', 'return')] = 'Returned'
+        transitions[('ADMIN', 'Submitted', 'reject')] = 'Rejected'
     if not order.workflow_official:
         transitions[('ADMIN', 'Requested', 'return')] = 'Returned'
         transitions[('ADMIN', 'Returned', 'return')] = 'Returned'
@@ -3155,7 +3176,9 @@ def ppmp_request_report_payload(order, user):
         'workflow_official': bool(order.workflow_official),
         'is_official': bool(order.workflow_official),
         'requested_by': order.requested_by,
+        'requester_role': order.requester.role if order.requester else '',
         'office_id': order.office_id,
+        'office_code': order.office.code if order.office else '',
         'may_provide_app_feedback': user.role == 'ADMIN' or (order.requested_by == user.id and order.office_id == user.college_id),
         'may_create_indicative_copy': bool(order.workflow_official and order.status in {'Approved', 'Processing', 'Completed'} and (
             user.role == 'ADMIN' or (order.requested_by == user.id and order.office_id == user.college_id))),
