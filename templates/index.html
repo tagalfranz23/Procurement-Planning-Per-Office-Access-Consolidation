@@ -1124,7 +1124,7 @@ td.center{text-align:center}
 
   <section class="panel" id="panel-ppmp-final">
     <div class="page-header">
-      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records created from approved Indicative PPMPs.</p></div>
+      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records for the Procurement Office.</p></div>
       <button class="btn btn-primary" type="button" onclick="loadFinalPPMP()">Refresh</button>
     </div>
     <div class="card">
@@ -4190,7 +4190,7 @@ async function loadFinalPPMP() {
   const requestId = ++finalPPMPLoadRequest;
   const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
   if (requestId !== finalPPMPLoadRequest) return;
-  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP records. Final PPMP No. 2 records will appear here after they are saved.</td></tr>';
+  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Procurement Final PPMP No. 2 records are available.</td></tr>';
 }
 
 async function loadPPMPPlanning() {

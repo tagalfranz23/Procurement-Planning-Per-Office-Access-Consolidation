@@ -2793,7 +2793,12 @@ def ppmp_order_return_reviewer(order):
 @permission_required('ppmp.order.view')
 def ppmp_final_records():
     user = current_session_user()
-    query = PPMPOrder.query.filter_by(workflow_official=True, ppmp_document_number=2)
+    user_office = db.session.get(College, user.college_id) if user.college_id else None
+    if is_ppmp_office_role(user.role) and (not user_office or user_office.code != 'PROCUREMENT'):
+        return jsonify([])
+    query = PPMPOrder.query.filter_by(workflow_official=True, ppmp_document_number=2).filter(
+        PPMPOrder.office.has(College.code == 'PROCUREMENT')
+    )
     if is_ppmp_office_role(user.role):
         if not user.college_id:
             return jsonify([])
