@@ -800,13 +800,15 @@ td.center{text-align:center}
       <button class="nav-item" id="cse-selected-items-nav" type="button" data-panel="cse-selected-items" data-permission="ppmp.view" onclick="showPanel('cse-selected-items',this)">Selected Items</button>
       {% endif %}
     </div>
+    {% if is_admin %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
-      {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Requests
-      <button class="ppmp-requests-submenu-toggle" id="ppmp-requests-submenu-toggle" type="button" data-permission="ppmp.report" aria-label="Toggle PPMP Requests submenu" aria-expanded="false" aria-controls="ppmp-requests-submenu" onclick="togglePPMPRequestsMenu(event)"><span aria-hidden="true">&#9662;</span></button>
+      <span class="icon"></span> PPMP Requests
+      <button class="ppmp-requests-submenu-toggle" id="ppmp-requests-submenu-toggle" type="button" aria-label="Toggle PPMP Requests submenu" aria-expanded="false" aria-controls="ppmp-requests-submenu" onclick="togglePPMPRequestsMenu(event)"><span aria-hidden="true">&#9662;</span></button>
     </div>
     <div class="ppmp-requests-submenu" id="ppmp-requests-submenu" hidden>
-      <button class="nav-item" id="reports-ppmp-request-nav" type="button" data-panel="ppmp-request-records" data-permission="ppmp.report" onclick="openPPMPRequestRecords(this)">PPMP Request Records</button>
+      <button class="nav-item" id="reports-ppmp-request-nav" type="button" data-panel="ppmp-request-records" onclick="openPPMPRequestRecords(this)">PPMP Request Records</button>
     </div>
+    {% endif %}
     {% if is_admin %}
     <div class="nav-item" id="consolidation-nav" data-panel="consolidation" onclick="showPanel('consolidation',this)" hidden>
       <span class="icon">🏛️</span> Consolidation
@@ -1961,7 +1963,7 @@ async function loadCurrentUser() {
   document.getElementById('ppmp-items-nav').hidden = !allowed('ppmp.record.view');
   document.getElementById('ppmp-final-nav').hidden = !allowed('ppmp.order.view');
   setHidden('ppmp-master-nav', !allowed('ppmp.view'));
-  document.getElementById('ppmp-request-nav').hidden = !allowed('ppmp.order.view');
+  setHidden('ppmp-request-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.order.view'));
   setHidden('consolidation-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
   document.getElementById('app-nav').hidden = !allowed('app.view');
   document.getElementById('reports-nav').hidden = !allowed('ppmp.report');
@@ -3612,21 +3614,21 @@ function showToast(msg, title = 'Info', type = '') {
 function setPPMPRequestsMenuExpanded(expanded) {
   const submenu = document.getElementById('ppmp-requests-submenu');
   const toggle = document.getElementById('ppmp-requests-submenu-toggle');
-  if (!submenu || !toggle) return;
-  const isExpanded = expanded && hasClientPermission('ppmp.report');
+  if (currentUser?.role !== 'ADMIN' || !submenu || !toggle) return;
+  const isExpanded = Boolean(expanded);
   submenu.hidden = !isExpanded;
   toggle.setAttribute('aria-expanded', String(isExpanded));
 }
 
 function togglePPMPRequestsMenu(event) {
   event.stopPropagation();
-  if (!hasClientPermission('ppmp.report')) return;
+  if (currentUser?.role !== 'ADMIN') return;
   const submenu = document.getElementById('ppmp-requests-submenu');
   if (submenu) setPPMPRequestsMenuExpanded(submenu.hidden);
 }
 
 async function openPPMPRequestRecords(navEl = document.getElementById('reports-ppmp-request-nav'), query = activeReportQuery || null) {
-  if (!currentUser || !hasClientPermission('ppmp.report')) return;
+  if (currentUser?.role !== 'ADMIN') return;
   try {
     await showPanel('ppmp-request-records', navEl, query);
     if (!navEl?.classList.contains('active') || !document.getElementById('panel-ppmp-request-records')?.classList.contains('active')) return;
@@ -3695,6 +3697,7 @@ async function openCSEMasterItemForm() {
 
 async function showPanel(id, el, reportQuery = null) {
   if (currentUser?.role === 'PROCUREMENT' && ['app-dashboard', 'apps'].includes(id)) return false;
+  if (['ppmp-requests', 'ppmp-request-records'].includes(id) && currentUser?.role !== 'ADMIN') return false;
   if (id === 'ppmp-final' && (!currentUser || !hasClientPermission('ppmp.order.view'))) return false;
   if (id === 'activity-log-tracker' && currentUser?.role !== 'ADMIN') return false;
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
@@ -3706,7 +3709,7 @@ async function showPanel(id, el, reportQuery = null) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
-  if (id === 'ppmp-requests' || id === 'ppmp-request-records' || id === 'ppmp-request-document') {
+  if (id === 'ppmp-requests' || id === 'ppmp-request-records') {
     setPPMPRequestsMenuExpanded(true);
     document.getElementById('ppmp-request-nav')?.classList.add('active');
   }
@@ -3991,8 +3994,8 @@ async function submitPPMPOrder(button) {
     renderOrderDraft();
     showToast(`${order.reference_number} ${existing ? 'updated' : 'draft created'}. Complete the report, Save, then Submit PPMP.`, 'PPMP Draft', 'success');
     await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
-    if (await showPanel('ppmp-requests') === false) return;
-    await openPPMPRequestReport(order.id);
+    const returnPanel = document.querySelector('.panel.active')?.id?.replace(/^panel-/, '') || 'cse-selected-items';
+    await openPPMPRequestReport(order.id, false, returnPanel);
   } catch (error) {
     showToast(error.message, 'PPMP Request', 'error');
   } finally {
@@ -4905,5 +4908,3 @@ function fmtNum(n) {
 }
 </script>
 </body>
-</html>
-
