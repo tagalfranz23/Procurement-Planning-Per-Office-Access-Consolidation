@@ -431,7 +431,12 @@ def notify_offices(office_ids, title, message, notification_type='info', extra_r
 def notify_ppmp_order_update(order, action, reviewer_role, note=None):
     label = (f'{order.reference_number} '
              f'({order.office.code if order.office else "Office"}, FY {order.fiscal_year})')
-    if order.status in {'Pending Admin Approval', 'Procurement Review'}:
+    if order.workflow_official and order.status == 'Submitted':
+        detail = 'was submitted and requires Administrator review.'
+        title = 'PPMP awaiting Administrator review'
+        notify_roles(('ADMIN',), title, f'{label} {detail} Open PPMP Request Records to review it.',
+                     target_type='ppmp_order', target_id=order.id, action_stage='ADMIN')
+    elif order.status in {'Pending Admin Approval', 'Procurement Review'}:
         detail = ('was resubmitted and requires Administrator review.' if action == 'submit'
                   else 'was approved by Procurement and requires Administrator review.')
         title = 'PPMP awaiting Administrator review'
@@ -444,7 +449,7 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
                      target_type='ppmp_order', target_id=order.id, action_stage='PROCUREMENT')
     elif order.status == 'Awaiting Finalization':
         title = 'Approved Indicative PPMP returned for finalization'
-        detail = 'received Procurement and Administrator approval as Indicative PPMP No. 1. The requester must update it to Final PPMP No. 2 and resubmit.'
+        detail = 'received Administrator approval as Indicative PPMP No. 1. The requester must update it to Final PPMP No. 2 and resubmit.'
     else:
         title = f'PPMP {order.status.lower()}'
         detail = {
@@ -457,7 +462,9 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
     message = f'{label} {detail}' + (f' Review note: {note}' if note else '')
     notification_type = ('success' if order.status in {'Approved', 'Completed', 'Awaiting Finalization'} else
                          'warning' if order.status in {'Returned', 'Rejected'} else 'info')
-    if order.status not in {'Pending Admin Approval', 'Procurement Review'} and reviewer_role != 'ADMIN':
+    if (order.status not in {'Pending Admin Approval', 'Procurement Review'}
+            and not (order.workflow_official and order.status == 'Submitted')
+            and reviewer_role != 'ADMIN'):
         notify_roles(('ADMIN',), f'PPMP {order.status.lower()}', message, notification_type,
                      target_type='ppmp_order', target_id=order.id)
     notify_offices({order.office_id}, title, message, notification_type,
@@ -1109,7 +1116,7 @@ def parse_item_data(data, college):
 
 
 def can_access_ppmp(user, item):
-    if user.role in {'ADMIN', 'EO', 'PROCUREMENT', 'BUDGET'}:
+    if user.role in {'ADMIN', 'EO', 'BUDGET'}:
         return True
     return item.created_by == user.id or (user.college_id and item.college_id == user.college_id)
 
@@ -1216,7 +1223,7 @@ def register():
         return jsonify({"error": "Administrator accounts must be created by an administrator."}), 403
     if office not in set(configured_offices()) | set(DEPARTMENT_CODES):
         return jsonify({'error': 'Select a valid office.'}), 400
-    if role not in {'EO', 'PROCUREMENT', 'BUDGET', 'BAC CHAIRMAN'} and role != office:
+    if role not in {'EO', 'BUDGET', 'BAC CHAIRMAN'} and role != office:
         return jsonify({'error': 'The selected office role must match its office.'}), 400
     managed_office = College.query.filter_by(code=office, is_active=True).first()
     if User.query.filter_by(email=email).first():
@@ -1476,7 +1483,7 @@ def approve_pending_user(user_id):
     data = request.get_json(silent=True) or {}
     if user.account_status != 'PENDING':
         return jsonify({'error': 'Only a pending account can be approved.'}), 409
-    if user.role not in {'ADMIN', 'EO', 'PROCUREMENT', 'BUDGET', 'BAC CHAIRMAN'}:
+    if user.role not in {'ADMIN', 'EO', 'BUDGET', 'BAC CHAIRMAN'}:
         office = resolve_ppmp_user_office(user, provision_missing=True)
         if office is None:
             office_code = (user.office or '').strip().upper()
@@ -1725,7 +1732,7 @@ def can_delete_legacy_ppmp_record(user, record):
 def can_access_ppmp_record(user, record):
     if user is None or is_deleted_legacy_ppmp_record(record):
         return False
-    if user.role in {'ADMIN', 'EO', 'AA', 'PROCUREMENT', 'BUDGET'}:
+    if user.role in {'ADMIN', 'EO', 'AA', 'BUDGET'}:
         return True
     return bool(user.college_id and user.college_id == record.office_id)
 
@@ -2323,8 +2330,8 @@ def ppmp_submission_requests():
     if request.method == "GET":
         user = current_session_user()
         query = PPMPSubmissionRequest.query
-        if user.role not in {'ADMIN', 'EO', 'AA', 'PROCUREMENT', 'BUDGET'}:
-            if not is_ppmp_office_role(user.role):
+        if user.role not in {'ADMIN', 'EO', 'AA', 'BUDGET'}:
+            if not is_ppmp_office_role(user.role) and user.role != 'PROCUREMENT':
                 return jsonify({'error': 'You do not have permission to view PPMP submission requests.'}), 403
             query = query.filter_by(college_id=user.college_id)
         results = []
@@ -2623,6 +2630,11 @@ def ppmp_orders():
             if not user.college_id:
                 return jsonify([])
             query = query.filter_by(office_id=user.college_id)
+        elif user.role == 'PROCUREMENT':
+            query = query.filter(or_(
+                PPMPOrder.office_id == user.college_id,
+                PPMPOrder.workflow_official.is_(False),
+            ))
         status = (request.args.get('status') or '').strip()
         if status in PPMPOrder.STATUSES:
             query = query.filter_by(status=status)
@@ -2821,6 +2833,8 @@ def transition_ppmp_order(order_id):
         return jsonify({'error': 'You do not have permission to process Wishlist requests.'}), 403
     if is_ppmp_office_role(user.role) and order.office_id != user.college_id:
         return jsonify({'error': 'You cannot access another office\'s Wishlist request.'}), 403
+    if user.role == 'PROCUREMENT' and order.workflow_official and order.office_id != user.college_id:
+        return jsonify({'error': 'Procurement can access only its own official PPMP records.'}), 403
     data = request.get_json(silent=True) or {}
     action = (data.get('action') or '').strip().lower()
     note = (data.get('note') or '').strip() or None
@@ -2850,29 +2864,30 @@ def transition_ppmp_order(order_id):
         ('ADMIN', 'Pending Admin Approval', 'approve'): 'Approved',
         ('ADMIN', 'Pending Admin Approval', 'return'): 'Returned',
         ('ADMIN', 'Pending Admin Approval', 'reject'): 'Rejected',
-        ('PROCUREMENT', 'Submitted', 'approve'): 'Pending Admin Approval',
-        ('PROCUREMENT', 'Submitted', 'return'): 'Returned',
-        ('PROCUREMENT', 'Submitted', 'reject'): 'Rejected',
-        ('PROCUREMENT', 'EO Review', 'approve'): 'Pending Admin Approval',
-        ('PROCUREMENT', 'EO Review', 'return'): 'Returned',
-        ('PROCUREMENT', 'EO Review', 'reject'): 'Rejected',
         ('ADMIN', 'Procurement Review', 'approve'): 'Approved',
         ('ADMIN', 'Procurement Review', 'return'): 'Returned',
         ('ADMIN', 'Procurement Review', 'reject'): 'Rejected',
         ('ADMIN', 'Approved', 'process'): 'Processing',
         ('ADMIN', 'Processing', 'complete'): 'Completed',
     }
-    procurement_owner_submission = bool(
-        order.requester
-        and order.requester.role == 'PROCUREMENT'
-        and order.office
-        and order.office.code == 'PROCUREMENT'
-    )
-    if procurement_owner_submission:
-        # Procurement cannot review its own office's submission.
-        transitions[('ADMIN', 'Submitted', 'approve')] = 'Approved'
-        transitions[('ADMIN', 'Submitted', 'return')] = 'Returned'
-        transitions[('ADMIN', 'Submitted', 'reject')] = 'Rejected'
+    if not order.workflow_official:
+        # Preserve the separate Procurement review path for legacy Wishlist orders.
+        transitions.update({
+            ('PROCUREMENT', 'Submitted', 'approve'): 'Pending Admin Approval',
+            ('PROCUREMENT', 'Submitted', 'return'): 'Returned',
+            ('PROCUREMENT', 'Submitted', 'reject'): 'Rejected',
+            ('PROCUREMENT', 'EO Review', 'approve'): 'Pending Admin Approval',
+            ('PROCUREMENT', 'EO Review', 'return'): 'Returned',
+            ('PROCUREMENT', 'EO Review', 'reject'): 'Rejected',
+        })
+    else:
+        transitions.update({
+            ('ADMIN', 'Submitted', 'approve'): 'Approved',
+            ('ADMIN', 'Submitted', 'return'): 'Returned',
+            ('ADMIN', 'Submitted', 'reject'): 'Rejected',
+        })
+        if user.role == 'PROCUREMENT' and not procurement_requester:
+            return jsonify({'error': 'Procurement can submit PPMPs only for its own office.'}), 403
     if not order.workflow_official:
         transitions[('ADMIN', 'Requested', 'return')] = 'Returned'
         transitions[('ADMIN', 'Returned', 'return')] = 'Returned'
@@ -2915,7 +2930,7 @@ def transition_ppmp_order(order_id):
     elif action == 'approve':
         order.return_stage = None
     if action == 'submit':
-        order.return_stage = returning_reviewer
+        order.return_stage = 'ADMIN' if order.workflow_official else returning_reviewer
         order.submitted_at = datetime.utcnow()
         order.decided_by = None
         order.decided_at = None
@@ -2983,6 +2998,8 @@ def ppmp_order_comments(order_id):
         return jsonify({'error': 'You do not have permission to view Wishlist request comments.'}), 403
     if is_ppmp_office_role(user.role) and order.office_id != user.college_id:
         return jsonify({'error': 'You cannot access another office\'s Wishlist request.'}), 403
+    if user.role == 'PROCUREMENT' and order.workflow_official and order.office_id != user.college_id:
+        return jsonify({'error': 'Procurement can access only its own official PPMP records.'}), 403
     if request.method == 'GET':
         comments = PPMPComment.query.filter_by(wishlist_order_id=order.id).order_by(PPMPComment.created_at.asc()).all()
         return jsonify([comment.to_dict() for comment in comments])
@@ -3091,6 +3108,8 @@ def scoped_ppmp_report_orders(user):
         report = available_ppmp_reports_query(user).filter(PPMPReport.id == report_id).first()
         if report is None:
             return None, None, (jsonify({'error': 'Available report not found.'}), 404)
+        if user.role == 'PROCUREMENT' and report.office_id != user.college_id:
+            return None, None, (jsonify({'error': 'Procurement can access only its own official PPMP reports.'}), 403)
         query = query.filter_by(office_id=report.office_id)
         if report.fiscal_year:
             query = query.filter_by(fiscal_year=report.fiscal_year)
@@ -3103,6 +3122,11 @@ def scoped_ppmp_report_orders(user):
                 return None, None, (jsonify({'error': 'You cannot access another office report.'}), 403)
             else:
                 query = query.filter_by(office_id=user.college_id)
+        elif user.role == 'PROCUREMENT':
+            query = query.filter(or_(
+                PPMPOrder.office_id == user.college_id,
+                PPMPOrder.workflow_official.is_(False),
+            ))
         elif office_id:
             query = query.filter_by(office_id=office_id)
         fiscal_year = request.args.get('fiscal_year', type=int)
@@ -3121,6 +3145,8 @@ def authorized_ppmp_request_report(user, order_id, *, require_pending=True):
         return None, (jsonify({'error': 'PPMP Request Record not found.'}), 404)
     if is_ppmp_office_role(user.role) and order.office_id != user.college_id:
         return None, (jsonify({'error': 'You cannot access another office PPMP Request Record.'}), 403)
+    if user.role == 'PROCUREMENT' and order.workflow_official and order.office_id != user.college_id:
+        return None, (jsonify({'error': 'Procurement can access only its own official PPMP records.'}), 403)
     if require_pending and not can_edit_official_ppmp(user, order):
         return None, (jsonify({'error': 'Only the creator can edit their Draft or Returned PPMP. Submitted and approved records are locked.'}), 409)
     return order, None
@@ -3815,7 +3841,7 @@ def ppmp_dashboard_data():
         consolidated_ids = {row.ppmp_item_id for row in ConsolidationSource.query.filter(
             ConsolidationSource.ppmp_item_id.in_(item_ids)).all()}
     request_query = PPMPSubmissionRequest.query
-    if user.role not in {'ADMIN', 'EO', 'AA', 'PROCUREMENT', 'BUDGET'}:
+    if user.role not in {'ADMIN', 'EO', 'AA', 'BUDGET'}:
         request_query = request_query.filter_by(college_id=user.college_id)
     request_counts = {status: request_query.filter_by(status=status).count()
                       for status in PPMPSubmissionRequest.STATUSES}
@@ -3830,8 +3856,17 @@ def ppmp_dashboard_data():
     order_query = PPMPOrder.query
     if is_ppmp_office_role(user.role):
         order_query = order_query.filter_by(office_id=user.college_id)
+    elif user.role == 'PROCUREMENT':
+        order_query = order_query.filter(or_(
+            PPMPOrder.office_id == user.college_id,
+            PPMPOrder.workflow_official.is_(False),
+        ))
     wishlist_order_counts = {status: order_query.filter_by(status=status).count()
                              for status in PPMPOrder.STATUSES}
+    official_submitted_count = (
+        PPMPOrder.query.filter_by(workflow_official=True, status='Submitted').count()
+        if user.role == 'ADMIN' else 0
+    )
     final_source_ids = {
         row[0] for row in db.session.query(PPMPOrderItem.ppmp_item_id).join(
             PPMPOrder, PPMPOrder.id == PPMPOrderItem.order_id,
@@ -3857,6 +3892,7 @@ def ppmp_dashboard_data():
             )
         ),
         'wishlist_order_counts': wishlist_order_counts,
+        'official_submitted_count': official_submitted_count,
         'eligible_for_consolidation': sum(1 for item in items if item.status == 'Approved' and item.id in final_source_ids and item.id not in consolidated_ids),
         'consolidated_items': len(consolidated_ids),
         'recent_records': [record.to_dict(include_items=False) for record in records[:5]],
@@ -4138,7 +4174,7 @@ def consolidation_batch_dict(batch):
 def final_ppmp_readiness(fiscal_year):
     """Return one final-PPMP readiness row for every active submitting office."""
     offices = [office for office in College.query.filter_by(is_active=True).order_by(College.code)
-               if is_ppmp_office_role(office.code)]
+               if office.code == 'PROCUREMENT' or is_ppmp_office_role(office.code)]
     rows = []
     for office in offices:
         registry = OfficialPPMP.query.filter_by(
@@ -4153,9 +4189,9 @@ def final_ppmp_readiness(fiscal_year):
         )
         stage_labels = {
             'Draft': 'Office preparation',
-            'Submitted': 'Procurement approval',
-            'EO Review': 'Procurement approval',
-            'Procurement Review': 'Procurement approval',
+            'Submitted': 'Administrator approval',
+            'EO Review': 'Administrator approval',
+            'Procurement Review': 'Administrator approval',
             'Pending Admin Approval': 'Administrator approval',
             'Awaiting Finalization': 'Requester finalization of Indicative No. 1',
             'Returned': 'Requester revision',

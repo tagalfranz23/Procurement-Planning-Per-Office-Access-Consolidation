@@ -758,8 +758,9 @@ class PPMPOrder(db.Model):
         if self.workflow_official:
             return {
                 'Draft': 'Office Preparation',
-                'Submitted': 'Procurement Review',
-                'Procurement Review': 'Procurement Review',
+                'Submitted': 'Administrator Approval',
+                'EO Review': 'Administrator Approval',
+                'Procurement Review': 'Administrator Approval',
                 'Pending Admin Approval': 'Administrator Approval',
                 'Returned': 'Creator Revision',
                 'Awaiting Finalization': 'Requester Finalization of Indicative PPMP',

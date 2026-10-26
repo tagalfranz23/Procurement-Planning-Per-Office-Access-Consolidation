@@ -4,11 +4,12 @@ Implemented and reviewed locally. The user authorized publishing this workflow a
 
 ## Official PPMP
 
-- Offices and Colleges select catalog or unlisted items and create their official draft.
+- Offices and Colleges, including the Procurement Office, select catalog or unlisted items and create their official draft.
 - Each office has one official PPMP per fiscal year, beginning in 2026.
-- The creator completes the twelve report columns, saves, and submits to Procurement.
-- Procurement reviews, then Admin approves. Approved PPMP data is locked.
-- A return requires a comment. The creator corrects the document and resubmits to the reviewer who returned it.
+- The creator completes the twelve report columns, saves, and submits directly to Admin.
+- Admin approves Indicative PPMP No. 1, then returns it to the requester for finalization. The requester updates it to Final PPMP No. 2 and submits it directly to Admin for final approval.
+- Approved Final PPMP No. 2 records from every active office and college, including Procurement, are consolidated into the institution-wide APP.
+- A return requires a comment. The creator corrects the document and resubmits it directly to Admin.
 - Admin can return incomplete legacy requests directly from the PPMP report, including historical Requested or Returned records. The creator can edit, save, and resubmit a Returned legacy record without first designating it official. Admin must still explicitly designate the correct office/year PPMP before final approval; legacy correction does not replace another official source.
 - Returned reports display the review comment, creator instructions, and missing required fields. Resubmit is enabled after the complete report is saved. Historical returns recover their reviewer from the audit history, defaulting to Admin for the former Wishlist request flow.
 - Incomplete reports cannot be approved. A valid Admin approval attempt on an incomplete report returns it to the creator with a generated correction comment and a notification. Approved source documents remain locked.
