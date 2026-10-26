@@ -149,9 +149,7 @@ ROLE_PERMISSIONS = {
            'app.view', 'app.review', 'app.return', 'app.report', 'app.export'},
     'PROCUREMENT': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.record.review', 'ppmp.review',
                     'ppmp.return', 'ppmp.reject', 'ppmp.approve',
-                    'ppmp.comment', 'ppmp.report', 'ppmp.export',
-                    'app.view', 'app.review',
-                    'app.return', 'app.reject', 'app.report', 'app.export', 'app.cse.view'},
+                    'ppmp.comment', 'ppmp.report', 'ppmp.export'},
     'BUDGET': {'ppmp.view', 'ppmp.order.view', 'ppmp.record.view', 'ppmp.review', 'ppmp.return', 'ppmp.comment', 'ppmp.report',
                'app.view', 'app.review', 'app.return', 'app.reject', 'app.report', 'app.export',
                'app.cse.view', 'app.cse.review'},
@@ -1958,7 +1956,9 @@ def ppmp_records():
         if not has_permission(user, 'ppmp.record.view'):
             return jsonify({'error': 'You do not have permission to view PPMP records.'}), 403
         query = visible_ppmp_records()
-        if is_ppmp_office_role(user.role):
+        if user.role == 'PROCUREMENT':
+            query = query.filter(PPMPRecord.office.has(College.code == 'PROCUREMENT'))
+        elif is_ppmp_office_role(user.role):
             if not user.college_id:
                 return jsonify([])
             query = query.filter_by(office_id=user.college_id)
@@ -2787,6 +2787,19 @@ def ppmp_order_return_reviewer(order):
             return 'PROCUREMENT'
     # Historical Wishlist requests were reviewed and returned by Admin.
     return 'ADMIN'
+
+
+@app.route('/api/ppmp-final-records', methods=['GET'])
+@permission_required('ppmp.order.view')
+def ppmp_final_records():
+    user = current_session_user()
+    query = PPMPOrder.query.filter_by(workflow_official=True, ppmp_document_number=2)
+    if is_ppmp_office_role(user.role):
+        if not user.college_id:
+            return jsonify([])
+        query = query.filter_by(office_id=user.college_id)
+    orders = query.order_by(PPMPOrder.updated_at.desc(), PPMPOrder.id.desc()).all()
+    return jsonify([order.to_dict() for order in orders])
 
 
 @app.route('/api/ppmp-orders/<int:order_id>/transition', methods=['POST'])

@@ -285,7 +285,9 @@ def register_ppmp_workflow_routes(application):
         user = application.current_session_user()
         if request.method == 'GET':
             query = IndicativePPMPCopy.query
-            if application.is_ppmp_office_role(user.role):
+            if user.role == 'PROCUREMENT':
+                query = query.filter(IndicativePPMPCopy.office.has(College.code == 'PROCUREMENT'))
+            elif application.is_ppmp_office_role(user.role):
                 query = query.filter_by(office_id=user.college_id) if user.college_id else query.filter(db.false())
             return jsonify([dict(copy.to_dict(), source_type='indicative', editable=can_edit_copy(user, copy), can_delete=can_edit_copy(user, copy),
                                  open_url=f'/api/ppmp-indicative-copies/{copy.id}/report')

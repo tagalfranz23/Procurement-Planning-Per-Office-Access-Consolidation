@@ -785,6 +785,9 @@ td.center{text-align:center}
       {% if is_admin %}<span class="icon"></span>{% endif %} Indicative PPMP
       <span class="nav-badge" id="badge-total">0</span>
     </div>
+    <div class="nav-item" id="ppmp-final-nav" data-panel="ppmp-final" data-permission="ppmp.order.view" onclick="showPanel('ppmp-final',this)" hidden>
+      {% if is_admin %}<span class="icon"></span>{% endif %} Final PPMP
+    </div>
     <div class="nav-item" id="ppmp-master-nav" data-panel="ppmp-wishlist" onclick="showPanel('ppmp-wishlist',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} CSE Master List
       <button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>
@@ -1116,6 +1119,17 @@ td.center{text-align:center}
         <div class="card-body"><div id="ppmp-record-comments" class="comment-list"><div class="text-muted text-xs">No comments.</div></div><div class="filter-row mt-12" id="ppmp-admin-comment-form" hidden><select class="filter-select" id="ppmp-comment-item"><option value="">Whole PPMP document</option></select><input class="filter-input" id="ppmp-comment-message" maxlength="5000" placeholder="Administrator comment"><button class="btn btn-primary" type="button" onclick="addPPMPRecordComment(this)">Add Comment</button></div></div>
       </div>
       </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-ppmp-final">
+    <div class="page-header">
+      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records created from approved Indicative PPMPs.</p></div>
+      <button class="btn btn-primary" type="button" onclick="loadFinalPPMP()">Refresh</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Final PPMP Records</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Action</th></tr></thead><tbody id="ppmp-final-list"><tr><td colspan="7">No Final PPMP records.</td></tr></tbody></table></div>
     </div>
   </section>
 
@@ -1629,6 +1643,7 @@ let ppmpReportEditing = false;
 let ppmpReportSaving = false;
 let ppmpReportLoading = false;
 let ppmpReportLeavePending = false;
+let finalPPMPLoadRequest = 0;
 const PPMP_REPORT_EDITABLE_FIELDS = new Set([
   'project_type', 'procurement_method', 'pre_procurement_conference',
   'procurement_start', 'procurement_end', 'delivery_period', 'source_of_funds', 'remarks',
@@ -1759,11 +1774,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (allowed('ppmp.view')) loaders.push(loadPPMPDashboard());
     if (allowed('ppmp.record.view')) loaders.push(loadPPMPPlanning());
     if (allowed('ppmp.order.view')) loaders.push(loadPPMPRequests());
-    if (allowed('app.view')) loaders.push(loadAPPDashboard());
+    if (allowed('app.view') && currentUser.role !== 'PROCUREMENT') loaders.push(loadAPPDashboard());
     if (currentUser.role === 'ADMIN') loaders.push(loadAdminOverview());
     await Promise.all(loaders);
     if (currentUser.role !== 'ADMIN') {
-      const ppmpAllowed = allowed('ppmp.view'), appAllowed = allowed('app.view');
+      const ppmpAllowed = allowed('ppmp.view');
+      const appAllowed = allowed('app.view') && currentUser.role !== 'PROCUREMENT';
       document.getElementById('workspace-choice-ppmp').hidden = !ppmpAllowed;
       document.getElementById('workspace-choice-app').hidden = !appAllowed;
       await showPanel(ppmpAllowed && appAllowed ? 'workspace-choice' : ppmpAllowed ? 'ppmp-dashboard' : 'app-dashboard');
@@ -1941,8 +1957,9 @@ async function loadCurrentUser() {
   const setHidden = (id, hidden) => { const element = document.getElementById(id); if (element) element.hidden = hidden; };
   setHidden('admin-dashboard-nav', currentUser.role !== 'ADMIN');
   setHidden('ppmp-dashboard-nav', !allowed('ppmp.view'));
-  setHidden('app-dashboard-nav', !allowed('app.view'));
+  setHidden('app-dashboard-nav', !allowed('app.view') || currentUser.role === 'PROCUREMENT');
   document.getElementById('ppmp-items-nav').hidden = !allowed('ppmp.record.view');
+  document.getElementById('ppmp-final-nav').hidden = !allowed('ppmp.order.view');
   setHidden('ppmp-master-nav', !allowed('ppmp.view'));
   document.getElementById('ppmp-request-nav').hidden = !allowed('ppmp.order.view');
   setHidden('consolidation-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
@@ -2586,12 +2603,16 @@ function updatePPMPReportEditingControls() {
   });
   const editButton = document.getElementById('ppmp-report-edit-button');
   const saveButton = document.getElementById('ppmp-report-save-button');
+  const finalPPMP = selectedPPMPRequestReport?.source_type === 'official'
+    && selectedPPMPRequestReport.workflow_official
+    && selectedPPMPRequestReport.status === 'Awaiting Finalization'
+    && Number(document.getElementById('ppmp-report-document-number').value) === 2;
   editButton.disabled = !editable || ppmpReportEditing || locked;
   editButton.title = editable ? 'Edit this report' : 'This report is read-only.';
   saveButton.disabled = !editable || !ppmpReportEditing || locked;
   const saved = Boolean(selectedPPMPRequestReport) && !ppmpReportEditing && !locked;
-  saveButton.textContent = ppmpReportSaving ? 'Saving...' : saved ? 'Saved' : 'Save';
-  saveButton.title = saved ? 'All report changes are saved' : ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
+  saveButton.textContent = ppmpReportSaving ? 'Saving...' : saved ? 'Saved' : finalPPMP ? 'Save Final PPMP' : 'Save';
+  saveButton.title = saved ? 'All report changes are saved' : finalPPMP ? 'Save Final PPMP No. 2 and add it to Final PPMP records' : ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
 }
 
 function resetPPMPRequestReportEditor() {
@@ -2816,7 +2837,7 @@ async function openIndicativeCopy(copyId) {
   } catch (error) { showToast(error.message, 'Indicative Copy', 'error'); }
 }
 
-async function openPPMPRequestReport(orderId, inline = false) {
+async function openPPMPRequestReport(orderId, inline = false, returnPanel = 'ppmp-request-records') {
   if (!currentUser || !hasClientPermission('ppmp.report')) return false;
   const sourcePanel = inline ? document.getElementById('panel-ppmp-request-records') : document.querySelector('.panel.active');
   if (inline && !sourcePanel?.classList.contains('active')) return false;
@@ -2833,7 +2854,7 @@ async function openPPMPRequestReport(orderId, inline = false) {
   try {
     const report = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
     if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return false;
-    ppmpReportReturnPanel = 'ppmp-request-records';
+    ppmpReportReturnPanel = returnPanel;
     renderPPMPRequestReport(report);
     if (inline) {
       document.getElementById('panel-ppmp-request-document').classList.add('active');
@@ -2853,6 +2874,10 @@ async function openPPMPRequestReport(orderId, inline = false) {
       updatePPMPReportEditingControls();
     }
   }
+}
+
+function openFinalPPMPReport(orderId) {
+  return openPPMPRequestReport(orderId, false, 'ppmp-final');
 }
 
 function editPPMPRequestReport() {
@@ -2896,8 +2921,19 @@ function savePPMPRequestReport() {
         method: 'PUT', body: JSON.stringify({ items, ppmp_document_number: documentNumber }), loadingMessage: 'Saving PPMP report changes...',
       });
       if (selectedPPMPRequestReport !== report) return false;
+      const savedAsFinalPPMP = report.source_type === 'official'
+        && report.workflow_official
+        && report.status === 'Awaiting Finalization'
+        && documentNumber === 2;
+      if (savedAsFinalPPMP) ppmpReportReturnPanel = 'ppmp-final';
       renderPPMPRequestReport(savedReport);
-      showToast('The report changes were saved.', 'PPMP Report', 'success');
+      if (savedAsFinalPPMP) {
+        showToast('Final PPMP No. 2 was saved and added to Final PPMP.', 'Final PPMP', 'success');
+        try { await loadFinalPPMP(); }
+        catch (error) { showToast(`The report was saved, but the Final PPMP list could not refresh: ${error.message}`, 'Final PPMP', 'warning'); }
+      } else {
+        showToast('The report changes were saved.', 'PPMP Report', 'success');
+      }
       return true;
     } catch (error) {
       showToast(error.message, 'PPMP Report', 'error');
@@ -3652,6 +3688,8 @@ async function openCSEMasterItemForm() {
 }
 
 async function showPanel(id, el, reportQuery = null) {
+  if (currentUser?.role === 'PROCUREMENT' && ['app-dashboard', 'apps'].includes(id)) return false;
+  if (id === 'ppmp-final' && (!currentUser || !hasClientPermission('ppmp.order.view'))) return false;
   if (id === 'activity-log-tracker' && currentUser?.role !== 'ADMIN') return false;
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
   if (id === 'consolidation' && currentUser?.role !== 'ADMIN') return false;
@@ -3688,6 +3726,7 @@ async function showPanel(id, el, reportQuery = null) {
   if (id === 'ppmp-wishlist') loadWishlist();
   if (id === 'cse-selected-items') renderOrderDraft();
   if (id === 'ppmp-planning') panelLoad = loadPPMPPlanning();
+  if (id === 'ppmp-final') panelLoad = loadFinalPPMP();
   if (id === 'apps') panelLoad = loadApps();
   if (id === 'activity-log') loadActivityLog();
   if (id === 'activity-log-tracker') panelLoad = loadActivityTracker();
@@ -4143,6 +4182,15 @@ async function deleteIndicativeCopy(copyId, button) {
     showToast('Indicative copy deleted.', 'PPMP Copy', 'success');
   } catch (error) { showToast(error.message, 'PPMP Copy', 'error'); }
   finally { button.disabled = false; }
+}
+
+async function loadFinalPPMP() {
+  const body = document.getElementById('ppmp-final-list');
+  if (!body || !currentUser || !hasClientPermission('ppmp.order.view')) return;
+  const requestId = ++finalPPMPLoadRequest;
+  const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
+  if (requestId !== finalPPMPLoadRequest) return;
+  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP records. Final PPMP No. 2 records will appear here after they are saved.</td></tr>';
 }
 
 async function loadPPMPPlanning() {
