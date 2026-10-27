@@ -785,6 +785,11 @@ td.center{text-align:center}
       {% if is_admin %}<span class="icon"></span>{% endif %} Indicative PPMP
       <span class="nav-badge" id="badge-total">0</span>
     </div>
+    {% if not is_admin %}
+    <div class="nav-item" id="ppmp-approved-nav" data-panel="ppmp-approved" data-permission="ppmp.order.create" onclick="showPanel('ppmp-approved',this)" hidden>
+      Approved PPMP
+    </div>
+    {% endif %}
     <div class="nav-item" id="ppmp-final-nav" data-panel="ppmp-final" data-permission="ppmp.order.view" onclick="showPanel('ppmp-final',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} Final PPMP
     </div>
@@ -1134,6 +1139,19 @@ td.center{text-align:center}
       <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Office</th><th>Fiscal Year</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Action</th></tr></thead><tbody id="ppmp-final-list"><tr><td colspan="7">No Final PPMP records.</td></tr></tbody></table></div>
     </div>
   </section>
+
+  {% if not is_admin %}
+  <section class="panel" id="panel-ppmp-approved">
+    <div class="page-header">
+      <div><h1>Approved PPMP</h1><p>Admin-approved Indicative PPMPs waiting for you to prepare and submit Final PPMP No. 2.</p></div>
+      <button class="btn btn-primary" type="button" onclick="loadApprovedPPMP()">Refresh</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">PPMPs Awaiting Finalization</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Reference</th><th>Fiscal Year</th><th>PPMP Type</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Action</th></tr></thead><tbody id="ppmp-approved-list"><tr><td colspan="7">No Admin-approved Indicative PPMPs are waiting for finalization.</td></tr></tbody></table></div>
+    </div>
+  </section>
+  {% endif %}
 
   {% if is_admin %}
   <section class="panel" id="panel-cse-add-item">
@@ -1646,6 +1664,7 @@ let ppmpReportSaving = false;
 let ppmpReportLoading = false;
 let ppmpReportLeavePending = false;
 let finalPPMPLoadRequest = 0;
+let approvedPPMPLoadRequest = 0;
 const PPMP_REPORT_EDITABLE_FIELDS = new Set([
   'project_type', 'procurement_method', 'pre_procurement_conference',
   'procurement_start', 'procurement_end', 'delivery_period', 'source_of_funds', 'remarks',
@@ -2888,6 +2907,10 @@ function openFinalPPMPReport(orderId) {
   return openPPMPRequestReport(orderId, false, 'ppmp-final');
 }
 
+function openApprovedPPMPReport(orderId) {
+  return openPPMPRequestReport(orderId, false, 'ppmp-approved');
+}
+
 function editPPMPRequestReport() {
   if (!selectedPPMPRequestReport?.editable || ppmpReportSaving || ppmpReportLoading) return;
   ppmpReportEditing = true;
@@ -2933,12 +2956,14 @@ function savePPMPRequestReport() {
         && report.workflow_official
         && report.status === 'Awaiting Finalization'
         && documentNumber === 2;
-      if (savedAsFinalPPMP) ppmpReportReturnPanel = 'ppmp-final';
+      if (savedAsFinalPPMP) ppmpReportReturnPanel = 'ppmp-approved';
       renderPPMPRequestReport(savedReport);
       if (savedAsFinalPPMP) {
-        showToast('Final PPMP No. 2 was saved and added to Final PPMP.', 'Final PPMP', 'success');
-        try { await loadFinalPPMP(); }
-        catch (error) { showToast(`The report was saved, but the Final PPMP list could not refresh: ${error.message}`, 'Final PPMP', 'warning'); }
+        showToast('Final PPMP No. 2 was saved. Submit it to Admin from this report.', 'Approved PPMP', 'success');
+        try {
+          await loadApprovedPPMP();
+          if (currentUser?.role === 'PROCUREMENT') await loadFinalPPMP();
+        } catch (error) { showToast(`The report was saved, but the PPMP lists could not refresh: ${error.message}`, 'Approved PPMP', 'warning'); }
       } else {
         showToast('The report changes were saved.', 'PPMP Report', 'success');
       }
@@ -3698,6 +3723,7 @@ async function openCSEMasterItemForm() {
 async function showPanel(id, el, reportQuery = null) {
   if (currentUser?.role === 'PROCUREMENT' && ['app-dashboard', 'apps'].includes(id)) return false;
   if (['ppmp-requests', 'ppmp-request-records'].includes(id) && currentUser?.role !== 'ADMIN') return false;
+  if (id === 'ppmp-approved' && (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.order.create'))) return false;
   if (id === 'ppmp-final' && (!currentUser || !hasClientPermission('ppmp.order.view'))) return false;
   if (id === 'activity-log-tracker' && currentUser?.role !== 'ADMIN') return false;
   if (id === 'account-registration' && currentUser?.role !== 'ADMIN') return;
@@ -3709,6 +3735,7 @@ async function showPanel(id, el, reportQuery = null) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
+  if (id === 'ppmp-request-document' && ppmpReportReturnPanel === 'ppmp-approved') document.getElementById('ppmp-approved-nav')?.classList.add('active');
   if (id === 'ppmp-requests' || id === 'ppmp-request-records') {
     setPPMPRequestsMenuExpanded(true);
     document.getElementById('ppmp-request-nav')?.classList.add('active');
@@ -3735,6 +3762,7 @@ async function showPanel(id, el, reportQuery = null) {
   if (id === 'ppmp-wishlist') loadWishlist();
   if (id === 'cse-selected-items') renderOrderDraft();
   if (id === 'ppmp-planning') panelLoad = loadPPMPPlanning();
+  if (id === 'ppmp-approved') panelLoad = loadApprovedPPMP();
   if (id === 'ppmp-final') panelLoad = loadFinalPPMP();
   if (id === 'apps') panelLoad = loadApps();
   if (id === 'activity-log') loadActivityLog();
@@ -4200,6 +4228,23 @@ async function loadFinalPPMP() {
   const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
   if (requestId !== finalPPMPLoadRequest) return;
   body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Procurement Final PPMP No. 2 records are available.</td></tr>';
+}
+
+async function loadApprovedPPMP() {
+  const body = document.getElementById('ppmp-approved-list');
+  if (!body || !currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.order.create')) return;
+  const requestId = ++approvedPPMPLoadRequest;
+  const records = await apiFetch(`${API}/ppmp-orders?status=${encodeURIComponent('Awaiting Finalization')}`, { loadingMessage: 'Loading approved PPMPs...' });
+  if (requestId !== approvedPPMPLoadRequest) return;
+  const approved = records.filter(order => order.workflow_official
+    && order.status === 'Awaiting Finalization'
+    && [1, 2].includes(Number(order.ppmp_document_number)));
+  body.innerHTML = approved.length ? approved.map(order => {
+    const finalSaved = Number(order.ppmp_document_number) === 2;
+    const type = finalSaved ? 'Final PPMP No. 2' : 'Indicative PPMP No. 1';
+    const status = finalSaved ? 'Final saved — ready to submit to Admin' : 'Approved by Admin — finalize and resubmit';
+    return `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${order.fiscal_year}</td><td>${type}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">${status}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openApprovedPPMPReport(${order.id})">${finalSaved ? 'Continue' : 'Finalize'}</button></td></tr>`;
+  }).join('') : '<tr><td colspan="7">No Admin-approved Indicative PPMPs are waiting for finalization.</td></tr>';
 }
 
 async function loadPPMPPlanning() {
