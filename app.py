@@ -2934,6 +2934,17 @@ def transition_ppmp_order(order_id):
         order.submitted_at = datetime.utcnow()
         order.decided_by = None
         order.decided_at = None
+    indicative_copy = None
+    if (action == 'submit' and previous == 'Draft' and order.workflow_official
+            and order.ppmp_document_number == 1):
+        try:
+            indicative_copy, _ = create_indicative_copy(sys.modules[__name__], user, order)
+        except (PermissionError, ValueError) as error:
+            db.session.rollback()
+            return jsonify({'error': f'The Indicative PPMP was not submitted because its reusable copy could not be saved: {error}'}), 409
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'error': 'The Indicative PPMP was not submitted because its saved copy conflicts with an existing fiscal-year copy. Contact Admin.'}), 409
     if note:
         order.admin_note = note
     materialized = 0
@@ -2967,23 +2978,11 @@ def transition_ppmp_order(order_id):
         'items': [ppmp_request_report_item(item, order) for item in order.items],
     })
     notify_ppmp_order_update(order, action, actor, note)
-    auto_app = None
-    auto_consolidation_error = None
-    if target == 'Approved' and order.workflow_official and order.ppmp_document_number == 2:
-        try:
-            with db.session.begin_nested():
-                auto_app = auto_consolidate_final_ppmps(order.fiscal_year, user)
-        except (IntegrityError, ValueError) as error:
-            auto_consolidation_error = str(error)
-            audit('ppmp_order', order.id, 'AUTO_CONSOLIDATION_PENDING', {
-                'fiscal_year': order.fiscal_year, 'error': auto_consolidation_error,
-            })
     db.session.commit()
     result = dict(order.to_dict(), auto_returned=auto_returned)
-    if auto_app:
-        result['consolidated_app'] = {'id': auto_app.id, 'status': auto_app.status}
-    if auto_consolidation_error:
-        result['auto_consolidation_error'] = auto_consolidation_error
+    if indicative_copy:
+        result['indicative_copy_saved'] = True
+        result['indicative_copy_id'] = indicative_copy.id
     return jsonify(result)
 
 
@@ -4214,8 +4213,8 @@ def final_ppmp_readiness(fiscal_year):
     return rows
 
 
-def auto_consolidate_final_ppmps(fiscal_year, actor):
-    """Create the institution-wide consolidation and APP draft once all offices finish No. 2."""
+def consolidate_final_ppmps(fiscal_year, actor):
+    """Consolidate all administrator-approved Final PPMPs when Admin requests it."""
     office_rows = final_ppmp_readiness(fiscal_year)
     if not office_rows or not all(row['is_final_approved'] for row in office_rows):
         return None
@@ -4284,7 +4283,7 @@ def auto_consolidate_final_ppmps(fiscal_year, actor):
             office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
             consolidation_batch_id=min(source_batch_ids), source_type='CONSOLIDATION',
             workflow_version=2, revision=1,
-            source_details={'institution_wide': True, 'automatic_consolidation': True},
+            source_details={'institution_wide': True, 'administrator_consolidation': True},
             created_by=actor.id,
         )
         db.session.add(plan)
@@ -4296,7 +4295,7 @@ def auto_consolidate_final_ppmps(fiscal_year, actor):
         raise ValueError('An older APP record already exists for this fiscal year and needs administrator review.')
 
     if plan.status not in {'Draft', 'Returned', 'Submitted', 'Under Review', 'For Admin Approval'}:
-        raise ValueError('The existing APP record is not open for the automatic consolidated draft.')
+        raise ValueError('The existing APP record is not open for consolidation updates.')
     for batch_id in sorted(source_batch_ids):
         batch_link = APPBatchLink.query.filter_by(batch_id=batch_id).first()
         if batch_link and batch_link.app_id != plan.id:
@@ -4316,13 +4315,13 @@ def auto_consolidate_final_ppmps(fiscal_year, actor):
             plan.revision = (plan.revision or 1) + 1
         materialize_app_items(plan, batch_sources, actor)
         sync_app_mode_tasks(plan)
-        app_audit_snapshot(plan, 'AUTO_FINAL_PPMP_CONSOLIDATED', {
+        app_audit_snapshot(plan, 'FINAL_PPMPS_CONSOLIDATED', {
             'fiscal_year': fiscal_year, 'source_ppmp_item_ids': [row.ppmp_item_id for row in batch_sources],
             'required_office_ids': sorted(submitting_office_ids),
         })
         notify_app_offices(
             plan, 'Final PPMPs consolidated into APP draft',
-            f'All active offices submitted and received approval for Final PPMP No. 2. APP #{plan.id}, FY {fiscal_year}, is ready for Admin review.',
+            f'All active offices submitted and received approval for Final PPMP No. 2. APP #{plan.id}, FY {fiscal_year}, is ready for Admin to prepare for BAC review.',
         )
     return plan
 
@@ -4336,7 +4335,7 @@ def consolidation_readiness():
         if type(fiscal_year) is not int or not 2000 <= fiscal_year <= 9999:
             return jsonify({'error': 'Fiscal year must be a valid whole number.'}), 400
         try:
-            plan = auto_consolidate_final_ppmps(fiscal_year, current_session_user())
+            plan = consolidate_final_ppmps(fiscal_year, current_session_user())
             if plan is None:
                 return jsonify({'error': 'Every active office and college must receive final Administrator approval for Final PPMP No. 2 first.'}), 409
             db.session.commit()
