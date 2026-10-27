@@ -785,26 +785,23 @@ td.center{text-align:center}
       {% if is_admin %}<span class="icon"></span>{% endif %} Indicative PPMP
       <span class="nav-badge" id="badge-total">0</span>
     </div>
+    <div class="nav-item" id="ppmp-final-nav" data-panel="ppmp-final" data-permission="ppmp.order.view" onclick="showPanel('ppmp-final',this)" hidden>
+      {% if is_admin %}<span class="icon"></span>{% endif %} Final PPMP
+    </div>
     {% if not is_admin %}
     <div class="nav-item" id="ppmp-approved-nav" data-panel="ppmp-approved" data-permission="ppmp.order.create" onclick="showPanel('ppmp-approved',this)" hidden>
       Approved PPMP
     </div>
     {% endif %}
-    <div class="nav-item" id="ppmp-final-nav" data-panel="ppmp-final" data-permission="ppmp.order.view" onclick="showPanel('ppmp-final',this)" hidden>
-      {% if is_admin %}<span class="icon"></span>{% endif %} Final PPMP
-    </div>
+    {% if is_admin %}
     <div class="nav-item" id="ppmp-master-nav" data-panel="ppmp-wishlist" onclick="showPanel('ppmp-wishlist',this)" hidden>
-      {% if is_admin %}<span class="icon"></span>{% endif %} CSE Master List
+      <span class="icon"></span> CSE Master List
       <button class="cse-submenu-toggle" id="cse-submenu-toggle" type="button" aria-label="Toggle CSE Master List submenu" aria-expanded="false" aria-controls="cse-master-submenu" onclick="toggleCSEMasterMenu(event)"><span aria-hidden="true">&#9662;</span></button>
     </div>
     <div class="cse-submenu" id="cse-master-submenu" hidden>
-      {% if is_admin %}
       <button class="nav-item" id="cse-add-item-nav" type="button" data-panel="cse-add-item" onclick="openCSEMasterItemForm()">Add/Edit Item</button>
-      {% else %}
-      <button class="nav-item" id="cse-user-add-item-nav" type="button" data-panel="cse-user-add-item" data-permission="ppmp.view" onclick="openCustomPPMPItem()">Add Item</button>
-      <button class="nav-item" id="cse-selected-items-nav" type="button" data-panel="cse-selected-items" data-permission="ppmp.view" onclick="showPanel('cse-selected-items',this)">Selected Items</button>
-      {% endif %}
     </div>
+    {% endif %}
     {% if is_admin %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       <span class="icon"></span> PPMP Requests
