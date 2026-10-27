@@ -1,7 +1,8 @@
 """Official office PPMPs and independent indicative report copies."""
 from copy import deepcopy
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import secrets
 from types import SimpleNamespace
 
 from flask import jsonify, request
@@ -40,12 +41,14 @@ def can_edit_copy(user, copy):
 
 
 def create_indicative_copy(application, user, source_order):
-    """Snapshot approved data once. Subsequent opens preserve the user's saved copy."""
+    """Snapshot an approved PPMP or its first submitted Indicative version once."""
     official = OfficialPPMP.query.filter_by(source_order_id=source_order.id).first()
     if not official or not source_order.workflow_official:
         raise ValueError('Select the official PPMP for this office and fiscal year.')
-    if source_order.status not in {'Approved', 'Processing', 'Completed'}:
-        raise ValueError('An indicative copy can be generated only from an approved official PPMP.')
+    submitted_indicative = source_order.status == 'Submitted' and source_order.ppmp_document_number == 1
+    approved_official = source_order.status in {'Approved', 'Processing', 'Completed'}
+    if not (submitted_indicative or approved_official):
+        raise ValueError('An indicative copy can be generated only from a submitted Indicative PPMP or an approved official PPMP.')
     if user.role != 'ADMIN' and (
         source_order.office_id != user.college_id or source_order.requested_by != user.id
     ):
@@ -373,6 +376,107 @@ def register_ppmp_workflow_routes(application):
                        procurement_methods=application.PPMP_REPORT_PROCUREMENT_METHODS,
                        fund_sources=application.PPMP_ORDER_FUND_SOURCES)
         return jsonify(payload)
+
+    @app.route('/api/ppmp-indicative-copies/<int:copy_id>/draft', methods=['POST'])
+    @application.permission_required('ppmp.order.create')
+    def create_draft_from_indicative_copy(copy_id):
+        copy = db.session.get(IndicativePPMPCopy, copy_id)
+        user = application.current_session_user()
+        if not copy:
+            return jsonify({'error': 'Indicative copy not found.'}), 404
+        if not can_edit_copy(user, copy) or user.college_id != copy.office_id:
+            return jsonify({'error': 'Only the office user who owns this copy can reuse it to create a PPMP draft.'}), 403
+        if user.role != 'PROCUREMENT' and not application.is_ppmp_office_role(user.role):
+            return jsonify({'error': 'This account cannot create an office PPMP draft.'}), 403
+
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict) or set(data) != {'fiscal_year', 'quarter'}:
+            return jsonify({'error': 'Choose a new fiscal year and quarter.'}), 400
+        try:
+            fiscal_year = int(data.get('fiscal_year'))
+        except (TypeError, ValueError, OverflowError):
+            return jsonify({'error': 'Fiscal year must be a valid year.'}), 400
+        if (isinstance(data.get('fiscal_year'), bool)
+                or (isinstance(data.get('fiscal_year'), float) and data['fiscal_year'] != fiscal_year)
+                or not 2026 <= fiscal_year <= 2100):
+            return jsonify({'error': 'Fiscal year must be between 2026 and 2100.'}), 400
+        if fiscal_year == copy.fiscal_year:
+            return jsonify({'error': 'Choose a fiscal year different from the saved Indicative PPMP.'}), 400
+        quarter = str(data.get('quarter') or '').strip()
+        if quarter not in application.QUARTERS:
+            return jsonify({'error': 'Select a valid quarter.'}), 400
+        if not copy.office or not copy.office.is_active:
+            return jsonify({'error': 'The office linked to this copy is not active.'}), 409
+        if OfficialPPMP.query.filter_by(office_id=copy.office_id, fiscal_year=fiscal_year).first():
+            return jsonify({'error': 'Your office already has an official PPMP for this fiscal year. Open its existing record.'}), 409
+        if PPMPOrder.query.filter_by(office_id=copy.office_id, fiscal_year=fiscal_year).filter(PPMPOrder.status != 'Rejected').first():
+            return jsonify({'error': 'An existing PPMP already covers this office and fiscal year.'}), 409
+        if not copy.items or len(copy.items) > 100:
+            return jsonify({'error': 'The saved copy must contain between 1 and 100 items.'}), 409
+
+        now = datetime.utcnow()
+        order = PPMPOrder(
+            reference_number=f'PPMPR-{now:%Y%m%d}-{secrets.token_hex(5).upper()}',
+            office_id=copy.office_id, requested_by=user.id, fiscal_year=fiscal_year,
+            quarter=quarter, status='Draft', workflow_official=True,
+            ppmp_document_number=1, submitted_at=now,
+        )
+        db.session.add(order)
+        try:
+            db.session.flush()
+            db.session.add(OfficialPPMP(
+                office_id=copy.office_id, fiscal_year=fiscal_year, source_order_id=order.id,
+            ))
+            db.session.flush()
+            for row in copy.items:
+                quantity = positive_decimal(row.get('quantity'), 'Quantity')
+                budget = positive_decimal(row.get('estimated_budget'), 'Estimated budget', allow_zero=True)
+                item_name = str(row.get('general_description') or '').strip()
+                unit = str(row.get('unit') or '').strip()
+                project_type = str(row.get('project_type') or 'Goods/Services').strip()
+                if not item_name or len(item_name) > 300 or not unit or len(unit) > 60:
+                    raise ValueError('A saved item has an invalid description or unit.')
+                if project_type not in application.PPMP_ORDER_TYPES:
+                    raise ValueError('A saved item has an invalid project type.')
+                dates = {}
+                for field in ('procurement_start', 'procurement_end', 'delivery_period'):
+                    value = str(row.get(field) or '').strip()
+                    dates[field] = datetime.strptime(value, '%Y-%m').date() if value else None
+                conference = row.get('pre_procurement_conference')
+                if conference not in {'Yes', 'No', ''}:
+                    raise ValueError('A saved item has an invalid pre-procurement conference value.')
+                unit_cost = (budget / quantity).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+                category = {
+                    'Infrastructure': 'Infrastructure',
+                    'Consulting Services': 'Consulting Services',
+                }.get(project_type, 'Goods')
+                db.session.add(PPMPOrderItem(
+                    order_id=order.id, created_by=user.id, item_name=item_name,
+                    description=None, category=category, project_type=project_type,
+                    quantity=quantity, unit=unit, estimated_unit_cost=unit_cost,
+                    estimated_budget=budget, is_custom_item=True,
+                    procurement_method=str(row.get('procurement_method') or '') or None,
+                    pre_procurement_conference=(True if conference == 'Yes' else False if conference == 'No' else None),
+                    procurement_start=dates['procurement_start'],
+                    procurement_end=dates['procurement_end'],
+                    delivery_period=dates['delivery_period'],
+                    source_of_funds=str(row.get('source_of_funds') or '') or None,
+                    supporting_documents=str(row.get('supporting_documents') or '') or None,
+                    remarks=str(row.get('remarks') or '') or None,
+                ))
+            db.session.flush()
+        except (ValueError, TypeError, IntegrityError) as error:
+            db.session.rollback()
+            message = str(error) if not isinstance(error, IntegrityError) else 'The PPMP draft could not be created because this fiscal year is already in use.'
+            return jsonify({'error': message}), 409 if isinstance(error, IntegrityError) else 400
+
+        application.audit('ppmp_order', order.id, 'OFFICIAL_PPMP_DRAFT_CREATED_FROM_INDICATIVE_COPY', {
+            'source_copy_id': copy.id, 'source_reference': copy.reference_number,
+            'source_fiscal_year': copy.fiscal_year, 'fiscal_year': fiscal_year,
+            'items': [dict(row) for row in copy.items],
+        })
+        db.session.commit()
+        return jsonify(order.to_dict()), 201
 
     @app.route('/api/ppmp-indicative-copies/<int:copy_id>/export/<format_name>')
     @application.permission_required('ppmp.export')
