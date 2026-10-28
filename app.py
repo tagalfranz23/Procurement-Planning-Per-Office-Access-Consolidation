@@ -3157,6 +3157,7 @@ def ppmp_report_month(value):
 def ppmp_request_report_item(item, order):
     return {
         'id': item.id,
+        'master_item_id': item.master_item_id,
         'general_description': item.item_name,
         'project_type': item.project_type or '',
         'quantity_and_size': f'{float(item.quantity or 0):g} {item.unit}',
@@ -4173,6 +4174,7 @@ def final_ppmp_readiness(fiscal_year):
     """Return one final-PPMP readiness row for every active submitting office."""
     offices = [office for office in College.query.filter_by(is_active=True).order_by(College.code)
                if office.code == 'PROCUREMENT' or is_ppmp_office_role(office.code)]
+    consolidated_item_ids = {row[0] for row in db.session.query(ConsolidationSource.ppmp_item_id).all()}
     rows = []
     for office in offices:
         registry = OfficialPPMP.query.filter_by(
@@ -4185,6 +4187,10 @@ def final_ppmp_readiness(fiscal_year):
             and all(item.ppmp_item_id for item in order.items)
             and all(item.ppmp_item and item.ppmp_item.status == 'Approved' for item in order.items)
         )
+        source_item_ids = [item.ppmp_item_id for item in order.items if item.ppmp_item_id] if order else []
+        already_consolidated = bool(ready and source_item_ids and all(
+            item_id in consolidated_item_ids for item_id in source_item_ids
+        ))
         stage_labels = {
             'Draft': 'Office preparation',
             'Submitted': 'Administrator approval',
@@ -4208,22 +4214,45 @@ def final_ppmp_readiness(fiscal_year):
             'item_count': len(order.items) if order else 0,
             'total_budget': float(sum((Decimal(item.estimated_budget or 0) for item in order.items), Decimal('0.00'))) if order else 0,
             'is_final_approved': ready,
+            'is_consolidated': already_consolidated,
         })
     return rows
 
 
-def consolidate_final_ppmps(fiscal_year, actor):
-    """Consolidate all administrator-approved Final PPMPs when Admin requests it."""
+def consolidate_final_ppmps(fiscal_year, actor, selected_order_ids=None):
+    """Consolidate selected approved Final PPMPs, or all when called by a legacy client."""
     office_rows = final_ppmp_readiness(fiscal_year)
-    if not office_rows or not all(row['is_final_approved'] for row in office_rows):
+    if selected_order_ids is None:
+        if not office_rows or not all(row['is_final_approved'] for row in office_rows):
+            return None
+        selected_rows = office_rows
+        selected_ids = {row['order_id'] for row in selected_rows if row['order_id']}
+    else:
+        if (not isinstance(selected_order_ids, list) or not selected_order_ids
+                or any(type(order_id) is not int or order_id <= 0 for order_id in selected_order_ids)
+                or len(set(selected_order_ids)) != len(selected_order_ids)):
+            raise ValueError('Select one or more valid approved Final PPMP records.')
+        rows_by_order_id = {row['order_id']: row for row in office_rows if row['order_id']}
+        if any(order_id not in rows_by_order_id for order_id in selected_order_ids):
+            raise ValueError('One or more selected PPMP records do not belong to an active office in this fiscal year.')
+        selected_rows = [rows_by_order_id[order_id] for order_id in selected_order_ids]
+        if any(not row['is_final_approved'] for row in selected_rows):
+            raise ValueError('Only administrator-approved Final PPMP No. 2 records can be consolidated.')
+        if any(row['is_consolidated'] for row in selected_rows):
+            raise ValueError('One or more selected Final PPMP records have already been consolidated.')
+        selected_ids = set(selected_order_ids)
+    if not selected_ids:
         return None
     registries = OfficialPPMP.query.filter_by(fiscal_year=fiscal_year).all()
-    submitting_office_ids = {row['office_id'] for row in office_rows}
+    submitting_office_ids = {row['office_id'] for row in selected_rows}
     orders = [registry.source_order for registry in registries
-              if registry.office_id in submitting_office_ids and registry.source_order]
+              if registry.office_id in submitting_office_ids and registry.source_order
+              and registry.source_order.id in selected_ids]
+    if len(orders) != len(selected_ids):
+        raise ValueError('One or more selected Final PPMP records are no longer available for consolidation.')
     source_items = [source.ppmp_item for order in orders for source in order.items]
     if not source_items or any(item is None or item.status != 'Approved' for item in source_items):
-        raise ValueError('Every approved Final PPMP No. 2 must have approved source items before consolidation.')
+        raise ValueError('Each selected Final PPMP No. 2 must have approved source items before consolidation.')
     source_ids = {item.id for item in source_items}
     existing_annual = AnnualProcurementPlan.query.filter_by(
         office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
@@ -4316,11 +4345,11 @@ def consolidate_final_ppmps(fiscal_year, actor):
         sync_app_mode_tasks(plan)
         app_audit_snapshot(plan, 'FINAL_PPMPS_CONSOLIDATED', {
             'fiscal_year': fiscal_year, 'source_ppmp_item_ids': [row.ppmp_item_id for row in batch_sources],
-            'required_office_ids': sorted(submitting_office_ids),
+            'consolidated_office_ids': sorted(submitting_office_ids),
         })
         notify_app_offices(
             plan, 'Final PPMPs consolidated into APP draft',
-            f'All active offices submitted and received approval for Final PPMP No. 2. APP #{plan.id}, FY {fiscal_year}, is ready for Admin to prepare for BAC review.',
+            f'Admin consolidated selected approved Final PPMP No. 2 submissions into APP #{plan.id}, FY {fiscal_year}. The Admin may complete the APP and submit it to the BAC Chairman for review.',
         )
     return plan
 
@@ -4333,8 +4362,9 @@ def consolidation_readiness():
         fiscal_year = data.get('fiscal_year')
         if type(fiscal_year) is not int or not 2000 <= fiscal_year <= 9999:
             return jsonify({'error': 'Fiscal year must be a valid whole number.'}), 400
+        order_ids = data.get('order_ids') if 'order_ids' in data else None
         try:
-            plan = consolidate_final_ppmps(fiscal_year, current_session_user())
+            plan = consolidate_final_ppmps(fiscal_year, current_session_user(), order_ids)
             if plan is None:
                 return jsonify({'error': 'Every active office and college must receive final Administrator approval for Final PPMP No. 2 first.'}), 409
             db.session.commit()
@@ -4418,7 +4448,7 @@ def annual_procurement_plans():
     if user is None or user.role != 'ADMIN':
         return jsonify({'error': 'Only Admin may create or extend consolidated APP drafts.'}), 403
     return jsonify({
-        'error': 'APP drafts are generated automatically after every active office receives approval for Final PPMP No. 2.'
+        'error': 'APP drafts are generated automatically when Admin consolidates approved Final PPMP No. 2 records.'
     }), 409
 
 
@@ -5222,4 +5252,5 @@ if __name__ == "__main__":
     else:
         print('Database ready. Starting PPMP web server...', flush=True)
         app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1", port=int(os.getenv("FLASK_PORT", "5000")), host="0.0.0.0")
+
 
