@@ -88,9 +88,9 @@ def notification_context(notification, application, user):
         completed |= application.is_ppmp_office_role(user.role) and office_id != user.college_id
         if stage:
             statuses = {
-                'ADMIN': {'Requested', 'Pending Admin Approval', 'Procurement Review'},
+                'ADMIN': {'Requested', 'Pending Admin Approval', 'Procurement Review', 'Submitted'},
                 'PROCUREMENT': {'Submitted', 'EO Review', 'Under Review'},
-                'EO': {'Submitted'}, 'CREATOR': {'Returned'},
+                'EO': {'Submitted'}, 'CREATOR': {'Returned', 'Awaiting Finalization'},
             }
             completed |= document.status not in statuses.get(stage, set())
             if stage != 'CREATOR':
