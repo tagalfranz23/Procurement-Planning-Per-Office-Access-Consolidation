@@ -448,17 +448,21 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
         notify_roles(('PROCUREMENT',), title, f'{label} {detail} Open PPMP Request Records to review it.',
                      target_type='ppmp_order', target_id=order.id, action_stage='PROCUREMENT')
     elif order.status == 'Awaiting Finalization':
-        title = 'Approved Indicative PPMP returned for finalization'
-        detail = 'received Administrator approval as Indicative PPMP No. 1. The requester must update it to Final PPMP No. 2 and resubmit.'
+        title = 'Indicative PPMP No. 1 approved'
+        detail = 'was approved by the Administrator. Update it to Final PPMP No. 2 and resubmit it for approval.'
     else:
-        title = f'PPMP {order.status.lower()}'
-        detail = {
-            'Returned': f'was returned by {reviewer_role}. The creator must correct and resubmit it.',
-            'Rejected': f'was rejected by {reviewer_role}.',
-            'Approved': 'received final Administrator approval. The official PPMP is now locked.',
-            'Processing': 'is now being processed.',
-            'Completed': 'has been completed.',
-        }.get(order.status, f'is now {order.status}.')
+        if order.workflow_official and order.status == 'Approved' and order.ppmp_document_number == 2:
+            title = 'Final PPMP No. 2 approved'
+            detail = 'received final Administrator approval and is ready for consolidation.'
+        else:
+            title = f'PPMP {order.status.lower()}'
+            detail = {
+                'Returned': f'was returned by {reviewer_role}. The creator must correct and resubmit it.',
+                'Rejected': f'was rejected by {reviewer_role}.',
+                'Approved': 'received final Administrator approval. The official PPMP is now locked.',
+                'Processing': 'is now being processed.',
+                'Completed': 'has been completed.',
+            }.get(order.status, f'is now {order.status}.')
     message = f'{label} {detail}' + (f' Review note: {note}' if note else '')
     notification_type = ('success' if order.status in {'Approved', 'Completed', 'Awaiting Finalization'} else
                          'warning' if order.status in {'Returned', 'Rejected'} else 'info')
