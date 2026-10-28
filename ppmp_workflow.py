@@ -407,8 +407,16 @@ def register_ppmp_workflow_routes(application):
             return jsonify({'error': 'Select a valid quarter.'}), 400
         if not copy.office or not copy.office.is_active:
             return jsonify({'error': 'The office linked to this copy is not active.'}), 409
-        if OfficialPPMP.query.filter_by(office_id=copy.office_id, fiscal_year=fiscal_year).first():
-            return jsonify({'error': 'Your office already has an official PPMP for this fiscal year. Open its existing record.'}), 409
+        existing_official = OfficialPPMP.query.filter_by(
+            office_id=copy.office_id, fiscal_year=fiscal_year,
+        ).first()
+        if existing_official:
+            existing_order = existing_official.source_order
+            reference = existing_order.reference_number if existing_order else 'Existing official PPMP'
+            status = existing_order.status if existing_order else 'record'
+            return jsonify({
+                'error': f'An official PPMP already exists for FY {fiscal_year}: {reference} ({status}). Open it from Indicative PPMP > PPMP Planning Documents.',
+            }), 409
         if PPMPOrder.query.filter_by(office_id=copy.office_id, fiscal_year=fiscal_year).filter(PPMPOrder.status != 'Rejected').first():
             return jsonify({'error': 'An existing PPMP already covers this office and fiscal year.'}), 409
         if not copy.items or len(copy.items) > 100:
