@@ -1053,7 +1053,7 @@ td.center{text-align:center}
 
   <section class="panel" id="panel-ppmp-planning">
     <div class="page-header">
-      <div><h1>PPMP Planning Documents</h1><p>Submitted Indicative PPMPs are saved here as editable copies. Reuse a saved copy to start a separate PPMP draft for another fiscal year.</p></div>
+      <div><h1>PPMP Planning Documents</h1><p>Official Indicative PPMP No. 1 records and saved copies are listed here. Reuse a saved copy to start a separate PPMP draft for another fiscal year.</p></div>
       <button class="btn btn-primary" type="button" onclick="loadPPMPPlanning()">Refresh</button>
     </div>
 
@@ -1128,7 +1128,7 @@ td.center{text-align:center}
 
   <section class="panel" id="panel-ppmp-final">
     <div class="page-header">
-      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records for the Procurement Office.</p></div>
+      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records for offices and colleges available to your account.</p></div>
       <button class="btn btn-primary" type="button" onclick="loadFinalPPMP()">Refresh</button>
     </div>
     <div class="card">
@@ -2823,6 +2823,7 @@ async function submitOpenPPMPReport(button) {
     await apiFetch(report.submit_url || `${API}/ppmp-orders/${report.id}/transition`, { method: 'POST', body: JSON.stringify({ action: 'submit' }), loadingMessage: 'Submitting official PPMP...' });
     const fresh = await apiFetch(`${API}/reports/ppmp-orders/${report.id}`);
     renderPPMPRequestReport(fresh);
+    await Promise.all([loadPPMPPlanning(), loadFinalPPMP()]);
     showToast(isFinalization ? 'Final PPMP No. 2 submitted to Admin.' : 'Indicative PPMP No. 1 submitted to Admin.', 'PPMP', 'success');
   } catch (error) { showToast(error.message, 'PPMP Submission', 'error'); }
   finally { button.disabled = false; }
@@ -2992,8 +2993,7 @@ function savePPMPRequestReport() {
       if (savedAsFinalPPMP) {
         showToast('Final PPMP No. 2 was saved. Submit it to Admin from this report.', 'Approved PPMP', 'success');
         try {
-          await loadApprovedPPMP();
-          if (currentUser?.role === 'PROCUREMENT') await loadFinalPPMP();
+          await Promise.all([loadApprovedPPMP(), loadFinalPPMP(), loadPPMPPlanning()]);
         } catch (error) { showToast(`The report was saved, but the PPMP lists could not refresh: ${error.message}`, 'Approved PPMP', 'warning'); }
       } else {
         showToast('The report changes were saved.', 'PPMP Report', 'success');
@@ -4052,7 +4052,7 @@ async function submitPPMPOrder(button) {
     orderDraftItems = [];
     renderOrderDraft();
     showToast(`${order.reference_number} ${existing ? 'updated' : 'draft created'}. Complete the report, Save, then Submit PPMP.`, 'PPMP Draft', 'success');
-    await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
+    await Promise.all([loadPPMPRequests(), loadPPMPDashboard(), loadPPMPPlanning(), loadFinalPPMP()]);
     const returnPanel = document.querySelector('.panel.active')?.id?.replace(/^panel-/, '') || 'cse-selected-items';
     await openPPMPRequestReport(order.id, false, returnPanel);
   } catch (error) {
@@ -4190,6 +4190,7 @@ async function transitionPPMPOrder(orderId, action, button) {
     showToast(workflowMessage, 'PPMP Review', order.status === 'Returned' ? 'warning' : 'success');
     if (selectedPPMPRequestReport?.source_type === 'official' && selectedPPMPRequestReport.id === orderId) renderPPMPRequestReport(await apiFetch(`${API}/reports/ppmp-orders/${orderId}`));
     await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
+    if (order.workflow_official) await Promise.all([loadPPMPPlanning(), loadFinalPPMP()]);
     if (document.getElementById('panel-ppmp-wishlist').classList.contains('active')) await loadWishlist();
     if (document.getElementById('panel-app-dashboard').classList.contains('active')) await loadAPPConsolidationQueue(false);
     if (currentUser.role === 'ADMIN' && document.getElementById('panel-consolidation').classList.contains('active')) await renderConsolidation();
@@ -4236,12 +4237,12 @@ function renderPPMPRecordList() {
   const body = document.getElementById('ppmp-record-list');
   const reuseButton = document.getElementById('ppmp-copy-reuse-button');
   if (reuseButton) reuseButton.disabled = creatingPPMPFromIndicativeCopy;
-  const officialDraftRows = wishlistOrders
-    .filter(order => order.workflow_official && order.status === 'Draft')
-    .map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official PPMP No. ${fmtNum(order.ppmp_document_number)} - Draft</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-planning')">Open</button></td><td>&mdash;</td></tr>`).join('');
+  const indicativeOrderRows = wishlistOrders
+    .filter(order => order.workflow_official && Number(order.ppmp_document_number) === 1)
+    .map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official Indicative PPMP No. 1 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-planning')">Open</button></td><td>&mdash;</td></tr>`).join('');
   const copyRows = indicativeCopies.map(copy => `<tr><td><strong>${escapeHtml(copy.reference_number || `Indicative Copy #${copy.id}`)}</strong></td><td>${escapeHtml(copy.office_code || copy.office_name || '')}</td><td>${copy.fiscal_year}</td><td>${fmtNum(copy.item_count || copy.items?.length || 0)}</td><td class="amount">&#8369; ${fmt(copy.total_budget)}</td><td><span class="pill pill-blue">Indicative copy</span></td><td><div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="openIndicativeCopy(${copy.id})">Open</button>${copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="openPPMPCopyReuseModal(${copy.id})">Use for another year</button>` : ''}</div></td><td>${copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deleteIndicativeCopy(${copy.id},this)">Delete</button>` : '&mdash;'}</td></tr>`).join('');
   const legacyRows = records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">&#8369; ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">Legacy - ${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" type="button" onclick="selectPPMPRecord(${record.id})">Open</button></td><td>${record.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deletePPMPRecord(${record.id},this)"${deletingPPMPRecordIds.has(record.id) ? ' disabled' : ''}>${deletingPPMPRecordIds.has(record.id) ? 'Deleting...' : 'Delete'}</button>` : '&mdash;'}</td></tr>`).join('');
-  body.innerHTML = officialDraftRows + copyRows + legacyRows || '<tr><td colspan="8">Submit an Indicative PPMP to save a reusable copy here.</td></tr>';
+  body.innerHTML = indicativeOrderRows + copyRows + legacyRows || '<tr><td colspan="8">Create an Indicative PPMP to see it listed here.</td></tr>';
 }
 
 function openPPMPCopyReuseModal(copyId) {
@@ -4282,7 +4283,7 @@ async function createPPMPDraftFromIndicativeCopy(button) {
     document.getElementById('ppmp-copy-reuse-modal').classList.remove('open');
     document.getElementById('ppmp-copy-reuse-year').value = '';
     document.getElementById('ppmp-copy-reuse-quarter').value = '';
-    await Promise.all([loadPPMPRequests(), loadPPMPDashboard()]);
+    await Promise.all([loadPPMPRequests(), loadPPMPDashboard(), loadPPMPPlanning()]);
     showToast(`${order.reference_number} was created as a separate draft for FY ${order.fiscal_year}.`, 'PPMP Draft', 'success');
     await openPPMPRequestReport(order.id, false, 'ppmp-planning');
   } catch (error) {
@@ -4311,7 +4312,7 @@ async function loadFinalPPMP() {
   const requestId = ++finalPPMPLoadRequest;
   const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
   if (requestId !== finalPPMPLoadRequest) return;
-  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Procurement Final PPMP No. 2 records are available.</td></tr>';
+  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">Final PPMP No. 2 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP No. 2 records are available for your office or college.</td></tr>';
 }
 
 async function loadApprovedPPMP() {
