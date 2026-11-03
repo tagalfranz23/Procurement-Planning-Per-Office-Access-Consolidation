@@ -992,8 +992,8 @@ td.center{text-align:center}
   </section>
 
   <section class="panel" id="panel-apps">
-    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>The Admin consolidates selected approved Final PPMP No. 2 records by fiscal year into one institution-wide APP.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
-    <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">APP Workflow</span></div><div class="card-body"><div class="app-create-note">Admin selects approved Final PPMP No. 2 records by fiscal year, consolidates the selected submissions into one APP, then submits the APP to the BAC Chairman for review.</div></div></div>
+    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>The Admin consolidates selected approved Final PPMP No. 1 records by fiscal year into one institution-wide APP.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
+    <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">APP Workflow</span></div><div class="card-body"><div class="app-create-note">Admin selects approved Final PPMP No. 1 records by fiscal year, consolidates the selected submissions into one APP, then submits the APP to the BAC Chairman for review.</div></div></div>
     <div class="card"><div class="card-header"><span class="card-title">APP Records</span><span class="text-xs text-muted">Admin and authorized APP roles inspect the same records</span></div><div class="table-wrap"><table><thead><tr><th>Office</th><th>Fiscal Year</th><th>Type</th><th>Sections</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Next Reviewer</th><th>Actions</th></tr></thead><tbody id="app-list"><tr><td colspan="9">Loading APP records…</td></tr></tbody></table></div></div>
     <div id="app-record-workspace" hidden>
       <div class="card"><div class="card-header app-workspace-header"><div><span class="card-title" id="selected-app-label">Selected APP</span><div class="text-xs text-muted" id="selected-app-meta"></div></div><div class="management-actions" id="selected-app-actions"></div></div><div class="card-body"><div class="app-summary-grid"><div class="app-summary"><strong id="app-total-budget">₱0.00</strong><span>Overall Estimated Budget</span></div><div class="app-summary"><strong id="app-epa-total">₱0.00</strong><span>EPA Projects</span></div><div class="app-summary"><strong id="app-cse-total">₱0.00</strong><span>CSE / PS-DBM</span></div><div class="app-summary"><strong id="app-capital-total">₱0.00</strong><span>Capital Outlay</span></div></div></div></div>
@@ -1169,7 +1169,7 @@ td.center{text-align:center}
 
   <section class="panel" id="panel-ppmp-final">
     <div class="page-header">
-      <div><h1>Final PPMP</h1><p>Final PPMP No. 2 records for offices and colleges available to your account.</p></div>
+      <div><h1>Final PPMP</h1><p>Final PPMP No. 1 records for offices and colleges available to your account.</p></div>
       <button class="btn btn-primary" type="button" onclick="loadFinalPPMP()">Refresh</button>
     </div>
     <div class="card">
@@ -1181,7 +1181,7 @@ td.center{text-align:center}
   {% if not is_admin %}
   <section class="panel" id="panel-ppmp-approved">
     <div class="page-header">
-      <div><h1>Approved PPMP</h1><p>Admin-approved Indicative PPMPs waiting for you to prepare and submit Final PPMP No. 2.</p></div>
+      <div><h1>Approved PPMP</h1><p>Admin-approved Indicative PPMPs waiting for you to prepare and submit Final PPMP No. 1.</p></div>
       <button class="btn btn-primary" type="button" onclick="loadApprovedPPMP()">Refresh</button>
     </div>
     <div class="card">
@@ -1303,7 +1303,7 @@ td.center{text-align:center}
     <div class="page-header">
       <div>
         <h1>PPMP Consolidation</h1>
-        <p>Filter by fiscal year, select approved Final PPMP No. 2 records, and consolidate the selected submissions into one APP.</p>
+        <p>Filter by fiscal year, select approved Final PPMP No. 1 records, and consolidate the selected submissions into one APP.</p>
       </div>
       <div class="action-row">
         <button class="btn btn-success" data-permission="ppmp.export" onclick="exportExcel()">📥 Export All Excel</button>
@@ -1320,7 +1320,7 @@ td.center{text-align:center}
       </div>
       <div class="card-body">
         <div class="filter-row"><select class="filter-select" id="consolidation-year" aria-label="Fiscal year" onchange="changeConsolidationYear()"><option value="">Select fiscal year</option></select></div>
-        <div class="form-hint" id="consolidation-readiness-note">Choose a fiscal year, then select approved Final PPMP No. 2 records to consolidate.</div>
+        <div class="form-hint" id="consolidation-readiness-note">Choose a fiscal year, then select approved Final PPMP No. 1 records to consolidate.</div>
       </div>
       <div class="table-wrap"><table>
         <thead><tr><th><input id="consolidation-select-all" type="checkbox" aria-label="Select all approved PPMPs" onchange="toggleAllConsolidationPPMPs(this.checked)"></th><th>Office / College</th><th>PPMP Reference</th><th>PPMP Type</th><th>Items</th><th>Total Budget</th><th>Current Stage</th></tr></thead>
@@ -1383,7 +1383,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-request-document">
     <div class="card mt-12" id="ppmp-request-report-detail" hidden>
       {% include 'partials/report-letterhead.html' %}
-      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" oninput="updatePPMPReportEditingControls()" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" checked disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" disabled>Final</label></div></div></div></div>
+      <div class="card-header"><div class="ppmp-report-print-brand"><img class="ppmp-report-print-logo" src="{{ url_for('static', filename='isu-seal.jpg') }}" alt="Isabela State University logo"><div class="ppmp-report-heading"><span class="card-title">PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. <input class="ppmp-report-document-number" id="ppmp-report-document-number" type="number" min="1" max="999999999" step="1" value="1" aria-label="PPMP document number" oninput="updatePPMPReportEditingControls()" disabled></span><div class="ppmp-report-types"><label class="ppmp-report-type"><input id="ppmp-report-indicative" type="checkbox" checked onchange="selectPPMPReportDocumentType('indicative')" disabled>Indicative</label><label class="ppmp-report-type"><input id="ppmp-report-final" type="checkbox" onchange="selectPPMPReportDocumentType('final')" disabled>Final</label></div></div></div></div>
       <div class="report-identity"><div>Fiscal Year:<strong id="ppmp-report-fiscal-year"></strong></div><div>End-User or Implementing Unit:<strong id="ppmp-report-office"></strong></div></div>
       <div class="card-body" id="ppmp-report-source-note"></div>
       <div class="card-body ppmp-review-feedback" id="ppmp-report-review-feedback" role="status" style="background:#fffbeb;border-left:3px solid var(--gold)" hidden></div>
@@ -2436,7 +2436,7 @@ async function loadAPPConsolidationQueue(showLoading = false) {
     grouped.set(key, row);
   }
   const groupedRows = sortFiscalYearsNewestFirst([...grouped.values()].map(row => ({ ...row, fiscal_year: row.item.fiscal_year })));
-  body.innerHTML = groupedRows.length ? groupedRows.map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Final PPMP No. 2</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">View Readiness</button></td></tr>`).join('') : '<tr><td colspan="7">No approved, unconsolidated Final PPMP sources are waiting to be consolidated.</td></tr>';
+  body.innerHTML = groupedRows.length ? groupedRows.map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Final PPMP No. 1</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">View Readiness</button></td></tr>`).join('') : '<tr><td colspan="7">No approved, unconsolidated Final PPMP sources are waiting to be consolidated.</td></tr>';
 }
 
 async function loadAdminOverview() {
@@ -2484,8 +2484,8 @@ async function renderConsolidation() {
       : '<tr><td colspan="7">No active PPMP offices or colleges are configured.</td></tr>';
     const selectableCount = selectableIds.size;
     let summary = data.all_final_approved
-      ? `All ${data.required_offices} active offices and colleges have approved Final PPMP No. 2.`
-      : `${data.final_approved_offices} of ${data.required_offices} active offices and colleges have approved Final PPMP No. 2.`;
+      ? `All ${data.required_offices} active offices and colleges have approved Final PPMP No. 1.`
+      : `${data.final_approved_offices} of ${data.required_offices} active offices and colleges have approved Final PPMP No. 1.`;
     summary += selectableCount
       ? ` Select one or more of the ${selectableCount} approved records for FY ${select.value} to consolidate.`
       : ' There are no approved Final PPMP records waiting for consolidation in this fiscal year.';
@@ -2760,8 +2760,27 @@ function changedPPMPRequestReportDocumentNumber() {
   const report = selectedPPMPRequestReport;
   const field = document.getElementById('ppmp-report-document-number');
   if (!report || !field) return false;
-  const number = Number(field.value);
+  const number = ppmpReportTargetDocumentNumber(report);
   return !Number.isSafeInteger(number) || number < 1 || number !== Number(report.ppmp_document_number);
+}
+
+function isPPMPReportFinalizationStage(report = selectedPPMPRequestReport) {
+  return Boolean(report?.source_type === 'official' && report.workflow_official && report.status === 'Awaiting Finalization');
+}
+
+function ppmpReportTargetDocumentNumber(report = selectedPPMPRequestReport) {
+  if (isPPMPReportFinalizationStage(report)) {
+    return document.getElementById('ppmp-report-final')?.checked ? 2 : 1;
+  }
+  return Number(document.getElementById('ppmp-report-document-number')?.value);
+}
+
+function selectPPMPReportDocumentType(type) {
+  if (!isPPMPReportFinalizationStage() || !ppmpReportEditing) return;
+  const finalSelected = type === 'final';
+  document.getElementById('ppmp-report-final').checked = finalSelected;
+  document.getElementById('ppmp-report-indicative').checked = !finalSelected;
+  updatePPMPReportEditingControls();
 }
 
 function hasUnsavedPPMPRequestReportChanges() {
@@ -2772,28 +2791,33 @@ function updatePPMPReportEditingControls() {
   const editable = Boolean(selectedPPMPRequestReport?.editable);
   document.getElementById('ppmp-report-edit-controls').hidden = !editable;
   const locked = ppmpReportSaving || ppmpReportLoading;
+  const finalizationStage = isPPMPReportFinalizationStage();
+  const mayChooseFinalType = finalizationStage && Number(selectedPPMPRequestReport?.ppmp_document_number) === 1;
+  const targetDocumentNumber = ppmpReportTargetDocumentNumber();
   document.querySelectorAll('#ppmp-request-report-items [data-report-field], #ppmp-request-report-items .ppmp-month-picker').forEach(input => {
     input.disabled = !editable || !ppmpReportEditing || locked;
   });
-  document.getElementById('ppmp-report-document-number').disabled = !editable || !ppmpReportEditing || locked;
+  document.getElementById('ppmp-report-document-number').disabled = !editable || !ppmpReportEditing || locked || finalizationStage;
+  document.getElementById('ppmp-report-indicative').disabled = !editable || !ppmpReportEditing || locked || !mayChooseFinalType;
+  document.getElementById('ppmp-report-final').disabled = !editable || !ppmpReportEditing || locked || !mayChooseFinalType;
   document.querySelectorAll('#ppmp-request-report-controls button, #ppmp-report-workflow-controls button').forEach(button => {
     const needsFinalNumber = button.dataset.requiresFinalNumber === 'true';
     button.disabled = locked
       || (button.dataset.requiresComplete === 'true' && selectedPPMPRequestReport?.is_complete === false)
-      || (needsFinalNumber && Number(document.getElementById('ppmp-report-document-number').value) !== 2);
+      || (needsFinalNumber && targetDocumentNumber !== 2);
   });
   const editButton = document.getElementById('ppmp-report-edit-button');
   const saveButton = document.getElementById('ppmp-report-save-button');
   const finalPPMP = selectedPPMPRequestReport?.source_type === 'official'
     && selectedPPMPRequestReport.workflow_official
     && selectedPPMPRequestReport.status === 'Awaiting Finalization'
-    && Number(document.getElementById('ppmp-report-document-number').value) === 2;
+    && targetDocumentNumber === 2;
   editButton.disabled = !editable || ppmpReportEditing || locked;
   editButton.title = editable ? 'Edit this report' : 'This report is read-only.';
   saveButton.disabled = !editable || !ppmpReportEditing || locked;
   const saved = Boolean(selectedPPMPRequestReport) && !ppmpReportEditing && !locked;
   saveButton.textContent = ppmpReportSaving ? 'Saving...' : saved ? 'Saved' : finalPPMP ? 'Save Final PPMP' : 'Save';
-  saveButton.title = saved ? 'All report changes are saved' : finalPPMP ? 'Save Final PPMP No. 2 and add it to Final PPMP records' : ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
+  saveButton.title = saved ? 'All report changes are saved' : finalPPMP ? 'Save Final PPMP No. 1 and add it to Final PPMP records' : ppmpReportEditing ? 'Save the report changes' : 'Choose Edit before saving changes';
 }
 
 function resetPPMPRequestReportEditor() {
@@ -2842,20 +2866,21 @@ function renderPPMPRequestReport(report) {
   const indicative = report.source_type === 'indicative' || Number(report.ppmp_document_number) !== 2;
   document.getElementById('ppmp-report-fiscal-year').textContent = report.fiscal_year;
   document.getElementById('ppmp-report-office').textContent = report.end_user_or_implementing_unit;
-  document.getElementById('ppmp-report-document-number').value = report.ppmp_document_number || 1;
+  const displayDocumentNumber = report.workflow_official && Number(report.ppmp_document_number) === 2 ? 1 : (report.ppmp_document_number || 1);
+  document.getElementById('ppmp-report-document-number').value = displayDocumentNumber;
   document.getElementById('ppmp-report-indicative').checked = indicative;
   document.getElementById('ppmp-report-final').checked = !indicative;
   const finalizationNote = report.read_only_final_record
     ? 'Read-only record. Continue finalization or submission from Approved PPMP.'
     : report.status === 'Awaiting Finalization'
-      ? 'Admin approved Indicative PPMP No. 1. Update the document number to 2 for Final, then resubmit to Admin.'
+      ? 'Admin approved Indicative PPMP No. 1. Mark it as Final PPMP No. 1, then resubmit to Admin.'
       : '';
   document.getElementById('ppmp-report-source-note').textContent = report.source_type === 'indicative'
     ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.'
     : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}${finalizationNote ? ` - ${finalizationNote}` : ''}`;
   const canSubmit = Boolean(report.can_submit && report.editable);
   const submitLabel = report.status === 'Awaiting Finalization'
-    ? 'Submit Final PPMP No. 2'
+    ? 'Submit Final PPMP No. 1'
     : report.status === 'Returned' ? 'Resubmit PPMP'
     : 'Submit Indicative PPMP No. 1';
   document.getElementById('ppmp-report-workflow-actions').innerHTML = (canSubmit ? `<button class="btn btn-primary" type="button" data-requires-complete="true"${report.status === 'Awaiting Finalization' ? ' data-requires-final-number="true"' : ''} title="Complete and save all required fields before submitting" onclick="submitOpenPPMPReport(this)">${submitLabel}</button>` : '') + (report.may_create_indicative_copy ? `<button class="btn btn-primary" type="button" onclick="createIndicativeCopyFromReport(this)">Create / Open Indicative Copy</button>` : '') + ppmpReportReviewActions(report);
@@ -2889,7 +2914,7 @@ function ppmpReportReviewActions(report) {
       ? 'Approve & Forward to Admin'
       : Number(report.ppmp_document_number) === 1
         ? 'Approve Indicative No. 1 & Return to Requester'
-        : 'Final Approve PPMP No. 2';
+        : 'Final Approve PPMP No. 1';
     if ((report.is_official || currentUser.role === 'PROCUREMENT') && report.is_complete !== false) buttons.push(`<button class="btn btn-success" type="button" onclick="transitionPPMPOrder(${report.id},'approve',this)">${approveLabel}</button>`);
     buttons.push(`<button class="btn btn-primary" type="button" onclick="transitionPPMPOrder(${report.id},'return',this)">Return to Creator</button>`);
     buttons.push(`<button class="btn btn-danger" type="button" onclick="transitionPPMPOrder(${report.id},'reject',this)">Reject</button>`);
@@ -2950,7 +2975,7 @@ async function submitOpenPPMPReport(button) {
   if (!report?.can_submit || !report.editable || !canUseSavedPPMPRequestReport()) return;
   const isFinalization = report.status === 'Awaiting Finalization';
   if (!await showFloatingConfirm(isFinalization
-    ? 'Submit Final PPMP No. 2 to Admin for approval? All required report fields must be complete.'
+    ? 'Submit Final PPMP No. 1 to Admin for approval? All required report fields must be complete.'
     : `${report.status === 'Returned' ? 'Resubmit this corrected' : 'Submit this'} Indicative PPMP No. 1 to Admin for review? All required report fields must be complete.`)) return;
   button.disabled = true;
   try {
@@ -2958,7 +2983,7 @@ async function submitOpenPPMPReport(button) {
     const fresh = await apiFetch(`${API}/reports/ppmp-orders/${report.id}`);
     renderPPMPRequestReport(fresh);
     await Promise.all([loadPPMPPlanning(), loadFinalPPMP()]);
-    showToast(isFinalization ? 'Final PPMP No. 2 submitted to Admin.' : 'Indicative PPMP No. 1 submitted to Admin.', 'PPMP', 'success');
+    showToast(isFinalization ? 'Final PPMP No. 1 submitted to Admin.' : 'Indicative PPMP No. 1 submitted to Admin.', 'PPMP', 'success');
   } catch (error) { showToast(error.message, 'PPMP Submission', 'error'); }
   finally { button.disabled = false; }
 }
@@ -3210,7 +3235,7 @@ function savePPMPRequestReport() {
   }
   const items = changedPPMPRequestReportItems();
   const documentNumberField = document.getElementById('ppmp-report-document-number');
-  const documentNumber = Number(documentNumberField.value);
+  const documentNumber = ppmpReportTargetDocumentNumber(report);
   if (!Number.isSafeInteger(documentNumber) || documentNumber < 1 || documentNumber > 999999999) {
     showToast('PPMP document number must be a positive whole number.', 'PPMP Report', 'warning');
     documentNumberField.focus();
@@ -3238,7 +3263,7 @@ function savePPMPRequestReport() {
       if (savedAsFinalPPMP) ppmpReportReturnPanel = 'ppmp-approved';
       renderPPMPRequestReport(savedReport);
       if (savedAsFinalPPMP) {
-        showToast('Final PPMP No. 2 was saved. Submit it to Admin from this report.', 'Approved PPMP', 'success');
+        showToast('Final PPMP No. 1 was saved. Submit it to Admin from this report.', 'Approved PPMP', 'success');
         try {
           await Promise.all([loadApprovedPPMP(), loadFinalPPMP(), loadPPMPPlanning()]);
         } catch (error) { showToast(`The report was saved, but the PPMP lists could not refresh: ${error.message}`, 'Approved PPMP', 'warning'); }
@@ -4393,7 +4418,7 @@ function ppmpOrderActions(order) {
       ? 'Approve & Forward to Admin'
       : Number(order.ppmp_document_number) === 1
         ? 'Approve Indicative No. 1 & Return to Requester'
-        : 'Final Approve PPMP No. 2';
+        : 'Final Approve PPMP No. 1';
     buttons.push(`<button class="btn btn-success btn-sm" onclick="transitionPPMPOrder(${order.id},'approve',this)">${approveLabel}</button>`);
     buttons.push(`<button class="btn btn-ghost btn-sm" onclick="transitionPPMPOrder(${order.id},'return',this)">Return</button>`);
     buttons.push(`<button class="btn btn-danger btn-sm" onclick="transitionPPMPOrder(${order.id},'reject',this)">Reject</button>`);
@@ -4591,7 +4616,7 @@ async function loadFinalPPMP() {
   const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
   if (requestId !== finalPPMPLoadRequest) return;
   const sortedRecords = sortFiscalYearsNewestFirst(records);
-  body.innerHTML = sortedRecords.length ? sortedRecords.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">Final PPMP No. 2 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP No. 2 records are available for your office or college.</td></tr>';
+  body.innerHTML = sortedRecords.length ? sortedRecords.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">Final PPMP No. 1 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP No. 1 records are available for your office or college.</td></tr>';
 }
 
 async function loadApprovedPPMP() {
@@ -4605,7 +4630,7 @@ async function loadApprovedPPMP() {
     && [1, 2].includes(Number(order.ppmp_document_number))));
   body.innerHTML = approved.length ? approved.map(order => {
     const finalSaved = Number(order.ppmp_document_number) === 2;
-    const type = finalSaved ? 'Final PPMP No. 2' : 'Indicative PPMP No. 1';
+    const type = finalSaved ? 'Final PPMP No. 1' : 'Indicative PPMP No. 1';
     const status = finalSaved ? 'Final saved — ready to submit to Admin' : 'Approved by Admin — finalize and resubmit';
     return `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${order.fiscal_year}</td><td>${type}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">${status}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openApprovedPPMPReport(${order.id})">${finalSaved ? 'Continue' : 'Finalize'}</button></td></tr>`;
   }).join('') : '<tr><td colspan="7">No Admin-approved Indicative PPMPs are waiting for finalization.</td></tr>';
@@ -5064,7 +5089,7 @@ async function loadApps() {
   document.getElementById('app-list').innerHTML = plans.length ? sortFiscalYearsNewestFirst(plans).map(plan => {
     const statusLabel = plan.status === 'Finalized' && Number(plan.workflow_version || 1) >= 2 ? 'Final APP Record' : plan.status;
     return `<tr><td>${escapeHtml(plan.office)}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type.replaceAll('_',' '))}</td><td>${plan.section_count}</td><td>${plan.item_count}</td><td class="amount">&#8369; ${fmt(plan.totals.overall)}</td><td><span class="pill ${['Approved','Finalized'].includes(plan.status)?'pill-green':['Returned','Rejected'].includes(plan.status)?'pill-red':'pill-gold'}">${escapeHtml(statusLabel)}</span></td><td>${escapeHtml(plan.expected_reviewer || (plan.status === 'Returned' ? `Admin correction, then ${plan.return_stage || plan.returned_from_role || 'returning reviewer'}` : ''))}</td><td><div class="management-actions">${appPlanActions(plan)}</div></td></tr>`;
-  }).join('') : '<tr><td colspan="9">The APP draft will appear here after Admin consolidates all approved Final PPMP No. 2 submissions.</td></tr>';
+  }).join('') : '<tr><td colspan="9">The APP draft will appear here after Admin consolidates all approved Final PPMP No. 1 submissions.</td></tr>';
   if (selectedAPPId && plans.some(plan => plan.id === selectedAPPId)) await openAPP(selectedAPPId, false);
 }
 
