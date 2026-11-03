@@ -449,10 +449,10 @@ def notify_ppmp_order_update(order, action, reviewer_role, note=None):
                      target_type='ppmp_order', target_id=order.id, action_stage='PROCUREMENT')
     elif order.status == 'Awaiting Finalization':
         title = 'Indicative PPMP No. 1 approved'
-        detail = 'was approved by the Administrator. Update it to Final PPMP No. 2 and resubmit it for approval.'
+        detail = 'was approved by the Administrator. Update it to Final PPMP No. 1 and resubmit it for approval.'
     else:
         if order.workflow_official and order.status == 'Approved' and order.ppmp_document_number == 2:
-            title = 'Final PPMP No. 2 approved'
+            title = 'Final PPMP No. 1 approved'
             detail = 'received final Administrator approval and is ready for consolidation.'
         else:
             title = f'PPMP {order.status.lower()}'
@@ -2907,14 +2907,14 @@ def transition_ppmp_order(order_id):
         elif order.ppmp_document_number == 2:
             target = 'Approved'
         else:
-            return jsonify({'error': 'Official PPMP must be document No. 1 (Indicative) or No. 2 (Final).'}), 409
+            return jsonify({'error': 'Official PPMP must be marked as Indicative or Final.'}), 409
     if action == 'submit' and order.workflow_official:
         if order.status == 'Draft' and order.ppmp_document_number != 1:
             return jsonify({'error': 'Submit the initial PPMP as Indicative PPMP No. 1.'}), 409
         if order.status == 'Awaiting Finalization' and order.ppmp_document_number != 2:
-            return jsonify({'error': 'Update this approved Indicative PPMP to Final PPMP No. 2 before resubmitting.'}), 409
+            return jsonify({'error': 'Mark this approved Indicative PPMP as Final PPMP No. 1 before resubmitting.'}), 409
         if order.status == 'Returned' and order.ppmp_document_number not in {1, 2}:
-            return jsonify({'error': 'Resubmitted official PPMP must be No. 1 or No. 2.'}), 409
+            return jsonify({'error': 'Resubmitted official PPMP must be marked as Indicative or Final.'}), 409
     auto_returned = False
     missing_fields = ppmp_request_report_missing_fields(order) if action in {'submit', 'approve'} else []
     if action == 'approve' and actor == 'ADMIN' and missing_fields:
@@ -3379,7 +3379,7 @@ def update_ppmp_request_report_items(order_id):
             if not (order.status == 'Awaiting Finalization'
                     and order.ppmp_document_number == 1 and document_number == 2):
                 return jsonify({
-                    'error': 'Only an Admin-approved Indicative PPMP No. 1 can be updated to Final PPMP No. 2.'
+                    'error': 'Only an Admin-approved Indicative PPMP No. 1 can be marked as Final PPMP No. 1.'
                 }), 409
     if not rows and document_number is None:
         return jsonify({'error': 'Provide at least one report change to save.'}), 400
@@ -3659,8 +3659,9 @@ def export_selected_ppmp_request_pdf(order_id=None, *, document=None, indicative
     header_style.alignment = 1
     logo_path = os.path.join(app.root_path, 'static', 'isu-seal.jpg')
     logo = ReportImage(logo_path, width=20 * mm, height=20 * mm)
+    display_document_number = 1 if order.workflow_official and order.ppmp_document_number == 2 else order.ppmp_document_number
     header = Table([
-        [logo, Paragraph(f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {order.ppmp_document_number}', title_style)],
+        [logo, Paragraph(f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {display_document_number}', title_style)],
     ], colWidths=[28 * mm, 360 * mm])
     header.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -3726,7 +3727,8 @@ def export_selected_ppmp_request_excel(order_id=None, *, document=None, indicati
     sheet = workbook.active
     sheet.title = 'PPMP Report'
     office_name = order.office.name if order.office and order.office.name else order.office.code if order.office else ''
-    sheet.append([f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {order.ppmp_document_number}'])
+    display_document_number = 1 if order.workflow_official and order.ppmp_document_number == 2 else order.ppmp_document_number
+    sheet.append([f'PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. {display_document_number}'])
     sheet.merge_cells('A1:L1')
     sheet['A1'].font = Font(bold=True, size=14)
     sheet['A1'].alignment = Alignment(horizontal='center', vertical='center')
@@ -4251,7 +4253,7 @@ def consolidate_final_ppmps(fiscal_year, actor, selected_order_ids=None):
             raise ValueError('One or more selected PPMP records do not belong to an active office in this fiscal year.')
         selected_rows = [rows_by_order_id[order_id] for order_id in selected_order_ids]
         if any(not row['is_final_approved'] for row in selected_rows):
-            raise ValueError('Only administrator-approved Final PPMP No. 2 records can be consolidated.')
+            raise ValueError('Only administrator-approved Final PPMP No. 1 records can be consolidated.')
         if any(row['is_consolidated'] for row in selected_rows):
             raise ValueError('One or more selected Final PPMP records have already been consolidated.')
         selected_ids = set(selected_order_ids)
@@ -4266,7 +4268,7 @@ def consolidate_final_ppmps(fiscal_year, actor, selected_order_ids=None):
         raise ValueError('One or more selected Final PPMP records are no longer available for consolidation.')
     source_items = [source.ppmp_item for order in orders for source in order.items]
     if not source_items or any(item is None or item.status != 'Approved' for item in source_items):
-        raise ValueError('Each selected Final PPMP No. 2 must have approved source items before consolidation.')
+        raise ValueError('Each selected Final PPMP No. 1 must have approved source items before consolidation.')
     source_ids = {item.id for item in source_items}
     existing_annual = AnnualProcurementPlan.query.filter_by(
         office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
@@ -4363,7 +4365,7 @@ def consolidate_final_ppmps(fiscal_year, actor, selected_order_ids=None):
         })
         notify_app_offices(
             plan, 'Final PPMPs consolidated into APP draft',
-            f'Admin consolidated selected approved Final PPMP No. 2 submissions into APP #{plan.id}, FY {fiscal_year}. The Admin may complete the APP and submit it to the BAC Chairman for review.',
+            f'Admin consolidated selected approved Final PPMP No. 1 submissions into APP #{plan.id}, FY {fiscal_year}. The Admin may complete the APP and submit it to the BAC Chairman for review.',
         )
     return plan
 
@@ -4380,7 +4382,7 @@ def consolidation_readiness():
         try:
             plan = consolidate_final_ppmps(fiscal_year, current_session_user(), order_ids)
             if plan is None:
-                return jsonify({'error': 'Every active office and college must receive final Administrator approval for Final PPMP No. 2 first.'}), 409
+                return jsonify({'error': 'Every active office and college must receive final Administrator approval for Final PPMP No. 1 first.'}), 409
             db.session.commit()
         except (IntegrityError, ValueError) as error:
             db.session.rollback()
@@ -4466,7 +4468,7 @@ def annual_procurement_plans():
     if user is None or user.role != 'ADMIN':
         return jsonify({'error': 'Only Admin may create or extend consolidated APP drafts.'}), 403
     return jsonify({
-        'error': 'APP drafts are generated automatically when Admin consolidates approved Final PPMP No. 2 records.'
+        'error': 'APP drafts are generated automatically when Admin consolidates approved Final PPMP No. 1 records.'
     }), 409
 
 
@@ -5270,5 +5272,4 @@ if __name__ == "__main__":
     else:
         print('Database ready. Starting PPMP web server...', flush=True)
         app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1", port=int(os.getenv("FLASK_PORT", "5000")), host="0.0.0.0")
-
 
