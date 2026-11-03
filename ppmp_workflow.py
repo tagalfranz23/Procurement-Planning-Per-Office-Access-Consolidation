@@ -294,7 +294,7 @@ def register_ppmp_workflow_routes(application):
                 query = query.filter_by(office_id=user.college_id) if user.college_id else query.filter(db.false())
             return jsonify([dict(copy.to_dict(), source_type='indicative', editable=can_edit_copy(user, copy), can_delete=can_edit_copy(user, copy),
                                  open_url=f'/api/ppmp-indicative-copies/{copy.id}/report')
-                            for copy in query.order_by(IndicativePPMPCopy.created_at.desc()).all()])
+                            for copy in query.order_by(IndicativePPMPCopy.fiscal_year.desc(), IndicativePPMPCopy.created_at.desc()).all()])
         return create_copy_response(application, user)
 
     @app.route('/api/ppmp-indicative-copies/<int:copy_id>', methods=['DELETE'])
