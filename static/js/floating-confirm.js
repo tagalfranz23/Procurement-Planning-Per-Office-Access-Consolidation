@@ -21,7 +21,8 @@
     const dialog = document.createElement('div');
     dialog.className = 'modal';
     dialog.style.maxWidth = '480px';
-    dialog.setAttribute('role', 'alertdialog');
+    const isPrompt = request.mode === 'prompt';
+    dialog.setAttribute('role', isPrompt ? 'dialog' : 'alertdialog');
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', `${id}-title`);
     dialog.setAttribute('aria-describedby', `${id}-message`);
@@ -44,6 +45,32 @@
     message.textContent = request.message;
     body.appendChild(message);
 
+    let promptField = null;
+    let promptError = null;
+    if (isPrompt) {
+      const fieldGroup = document.createElement('div');
+      fieldGroup.className = 'form-group mt-12';
+      const fieldLabel = document.createElement('label');
+      fieldLabel.className = options.required === false ? 'form-label' : 'form-label required';
+      fieldLabel.htmlFor = `${id}-input`;
+      fieldLabel.textContent = options.inputLabel == null ? 'Comment' : String(options.inputLabel);
+      promptField = document.createElement(options.multiline === false ? 'input' : 'textarea');
+      promptField.id = `${id}-input`;
+      promptField.className = 'form-control';
+      promptField.maxLength = Number.isSafeInteger(options.maxLength) ? options.maxLength : 5000;
+      promptField.placeholder = options.placeholder == null ? '' : String(options.placeholder);
+      if (options.multiline === false) promptField.type = 'text';
+      else promptField.rows = Number.isSafeInteger(options.rows) ? options.rows : 4;
+      promptField.value = options.value == null ? '' : String(options.value);
+      promptError = document.createElement('div');
+      promptError.className = 'form-hint';
+      promptError.style.color = 'var(--red)';
+      promptError.textContent = options.required === false ? '' : 'Enter a comment before continuing.';
+      promptError.hidden = true;
+      fieldGroup.append(fieldLabel, promptField, promptError);
+      body.appendChild(fieldGroup);
+    }
+
     const footer = document.createElement('div');
     footer.className = 'modal-footer';
     const cancel = document.createElement('button');
@@ -53,7 +80,7 @@
     const confirm = document.createElement('button');
     confirm.type = 'button';
     confirm.className = 'btn btn-primary';
-    confirm.textContent = options.confirmLabel == null ? 'OK' : String(options.confirmLabel);
+    confirm.textContent = options.confirmLabel == null ? (isPrompt ? 'Continue' : 'OK') : String(options.confirmLabel);
     footer.append(cancel, confirm);
     dialog.append(header, body, footer);
     overlay.appendChild(dialog);
@@ -73,7 +100,7 @@
         focus(previousFocus);
       }
       active = false;
-      request.resolve(value === true);
+      request.resolve(isPrompt ? (value === true ? promptField.value : null) : value === true);
       queueMicrotask(processNext);
     }
 
@@ -85,23 +112,33 @@
       } else if (event.key === 'Tab') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        const buttons = [cancel, confirm];
-        const position = buttons.indexOf(document.activeElement);
-        const next = position < 0 ? 0 : (position + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
-        focus(buttons[next]);
+        const focusable = isPrompt ? [promptField, cancel, confirm] : [cancel, confirm];
+        const position = focusable.indexOf(document.activeElement);
+        const next = position < 0 ? 0 : (position + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+        focus(focusable[next]);
+      } else if (isPrompt && event.key === 'Enter'
+          && event.target === promptField
+          && (options.multiline === false || event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        choose(event, true);
       }
     }
 
     function onFocusIn(event) {
       if (!settled && !dialog.contains(event.target)) {
         event.stopImmediatePropagation();
-        focus(cancel);
+        focus(isPrompt ? promptField : cancel);
       }
     }
 
     function choose(event, value) {
       event.preventDefault();
       event.stopPropagation();
+      if (isPrompt && value && options.required !== false && !promptField.value.trim()) {
+        promptError.hidden = false;
+        focus(promptField);
+        return;
+      }
       settle(value);
     }
 
@@ -118,12 +155,26 @@
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('focusin', onFocusIn, true);
     document.body.appendChild(overlay);
-    focus(cancel);
+    focus(isPrompt ? promptField : cancel);
   }
 
   window.showFloatingConfirm = function (message, options = {}) {
     return new Promise(resolve => {
       requests.push({
+        mode: 'confirm',
+        message: message == null ? '' : String(message),
+        options: options && typeof options === 'object' ? options : {},
+        resolve,
+      });
+      if (document.body) processNext();
+      else document.addEventListener('DOMContentLoaded', processNext, { once: true });
+    });
+  };
+
+  window.showFloatingPrompt = function (message, options = {}) {
+    return new Promise(resolve => {
+      requests.push({
+        mode: 'prompt',
         message: message == null ? '' : String(message),
         options: options && typeof options === 'object' ? options : {},
         resolve,
