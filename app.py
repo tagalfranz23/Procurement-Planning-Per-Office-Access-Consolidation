@@ -1978,7 +1978,9 @@ def ppmp_records():
             query = query.filter_by(status=status)
         return jsonify([
             ppmp_record_response(record)
-            for record in query.order_by(PPMPRecord.created_at.desc()).all()
+            for record in query.order_by(
+                PPMPRecord.fiscal_year.desc(), PPMPRecord.created_at.desc(),
+            ).all()
         ])
 
     if not has_permission(user, 'ppmp.record.create') or not is_ppmp_office_role(user.role):
@@ -2339,7 +2341,9 @@ def ppmp_submission_requests():
                 return jsonify({'error': 'You do not have permission to view PPMP submission requests.'}), 403
             query = query.filter_by(college_id=user.college_id)
         results = []
-        for submission_request in query.order_by(PPMPSubmissionRequest.created_at.desc()).all():
+        for submission_request in query.order_by(
+            PPMPSubmissionRequest.fiscal_year.desc(), PPMPSubmissionRequest.created_at.desc(),
+        ).all():
             result = submission_request.to_dict()
             record = visible_ppmp_records().filter_by(submission_request_id=submission_request.id).first()
             result['ppmp_record_id'] = record.id if record else None
@@ -2642,7 +2646,9 @@ def ppmp_orders():
         status = (request.args.get('status') or '').strip()
         if status in PPMPOrder.STATUSES:
             query = query.filter_by(status=status)
-        return jsonify([order.to_dict() for order in query.order_by(PPMPOrder.submitted_at.desc()).all()])
+        return jsonify([order.to_dict() for order in query.order_by(
+            PPMPOrder.fiscal_year.desc(), PPMPOrder.submitted_at.desc(), PPMPOrder.id.desc(),
+        ).all()])
 
     may_create_for_office = is_ppmp_office_role(user.role) or user.role == 'PROCUREMENT'
     if not has_permission(user, 'ppmp.order.create') or not may_create_for_office:
@@ -2817,7 +2823,9 @@ def ppmp_final_records():
         if not user.college_id:
             return jsonify([])
         query = query.filter_by(office_id=user.college_id)
-    orders = query.order_by(PPMPOrder.updated_at.desc(), PPMPOrder.id.desc()).all()
+    orders = query.order_by(
+        PPMPOrder.fiscal_year.desc(), PPMPOrder.updated_at.desc(), PPMPOrder.id.desc(),
+    ).all()
     return jsonify([order.to_dict() for order in orders])
 
 
@@ -3132,7 +3140,9 @@ def scoped_ppmp_report_orders(user):
             if not 2000 <= fiscal_year <= 2100:
                 return None, None, (jsonify({'error': 'Fiscal year must be between 2000 and 2100.'}), 400)
             query = query.filter_by(fiscal_year=fiscal_year)
-    orders = query.order_by(PPMPOrder.submitted_at.asc(), PPMPOrder.created_at.asc()).all()
+    orders = query.order_by(
+        PPMPOrder.fiscal_year.desc(), PPMPOrder.submitted_at.asc(), PPMPOrder.created_at.asc(),
+    ).all()
     return orders, report, None
 
 
@@ -3847,7 +3857,9 @@ def ppmp_dashboard_data():
     record_query = visible_ppmp_records()
     if is_ppmp_office_role(user.role):
         record_query = record_query.filter_by(office_id=user.college_id)
-    records = record_query.order_by(PPMPRecord.updated_at.desc()).all()
+    records = record_query.order_by(
+        PPMPRecord.fiscal_year.desc(), PPMPRecord.updated_at.desc(),
+    ).all()
     record_counts = {status: 0 for status in PPMPRecord.STATUSES}
     for record in records:
         record_counts[record.status] = record_counts.get(record.status, 0) + 1
@@ -4105,7 +4117,9 @@ def expected_app_reviewer(plan):
 @permission_required('app.view')
 def app_dashboard_data():
     user = current_session_user()
-    plans = AnnualProcurementPlan.query.order_by(AnnualProcurementPlan.updated_at.desc()).all()
+    plans = AnnualProcurementPlan.query.order_by(
+        AnnualProcurementPlan.fiscal_year.desc(), AnnualProcurementPlan.updated_at.desc(),
+    ).all()
     status_counts = {status: 0 for status in AnnualProcurementPlan.STATUSES}
     for plan in plans:
         status_counts[plan.status] = status_counts.get(plan.status, 0) + 1
@@ -4386,7 +4400,7 @@ def consolidation_readiness():
         office=INSTITUTION_OFFICE, fiscal_year=fiscal_year, plan_type='APP',
     ).first()
     return jsonify({
-        'fiscal_year': fiscal_year, 'fiscal_years': sorted(years), 'offices': offices,
+        'fiscal_year': fiscal_year, 'fiscal_years': sorted(years, reverse=True), 'offices': offices,
         'required_offices': len(offices), 'final_approved_offices': final_approved,
         'all_final_approved': bool(offices) and final_approved == len(offices),
         'app_id': plan.id if plan else None, 'app_status': plan.status if plan else None,
@@ -4410,11 +4424,13 @@ def consolidation_eligible():
             PPMPOrder.workflow_official.is_(True), PPMPOrder.status == 'Approved',
             PPMPOrder.ppmp_document_number == 2,
         ).first()
-    })
+    }, reverse=True)
     if fiscal_year is not None:
         query = query.filter_by(fiscal_year=fiscal_year)
     items, errors = [], []
-    for item in query.order_by(PPMPItem.fiscal_year, PPMPItem.college_id, PPMPItem.id).all():
+    for item in query.order_by(
+        PPMPItem.fiscal_year.desc(), PPMPItem.college_id, PPMPItem.id,
+    ).all():
         source = PPMPOrderItem.query.filter_by(ppmp_item_id=item.id).first()
         if (not source or not source.order.workflow_official or source.order.status != 'Approved'
                 or source.order.ppmp_document_number != 2):
@@ -4440,7 +4456,9 @@ def annual_procurement_plans():
         if not has_permission(user, 'app.view'):
             return jsonify({"error": "You do not have permission to view APP records."}), 403
         records = []
-        for plan in AnnualProcurementPlan.query.order_by(AnnualProcurementPlan.created_at.desc()):
+        for plan in AnnualProcurementPlan.query.order_by(
+            AnnualProcurementPlan.fiscal_year.desc(), AnnualProcurementPlan.created_at.desc(),
+        ):
             record = plan.to_dict()
             record['expected_reviewer'] = expected_app_reviewer(plan)
             records.append(record)
