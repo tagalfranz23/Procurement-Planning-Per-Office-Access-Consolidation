@@ -2845,9 +2845,11 @@ function renderPPMPRequestReport(report) {
   document.getElementById('ppmp-report-document-number').value = report.ppmp_document_number || 1;
   document.getElementById('ppmp-report-indicative').checked = indicative;
   document.getElementById('ppmp-report-final').checked = !indicative;
-  const finalizationNote = report.status === 'Awaiting Finalization'
-    ? 'Admin approved Indicative PPMP No. 1. Update the document number to 2 for Final, then resubmit to Admin.'
-    : '';
+  const finalizationNote = report.read_only_final_record
+    ? 'Read-only record. Continue finalization or submission from Approved PPMP.'
+    : report.status === 'Awaiting Finalization'
+      ? 'Admin approved Indicative PPMP No. 1. Update the document number to 2 for Final, then resubmit to Admin.'
+      : '';
   document.getElementById('ppmp-report-source-note').textContent = report.source_type === 'indicative'
     ? 'Editable indicative copy. Changes are saved only to this copy; the approved PPMP and consolidation source stay locked.'
     : `${report.reference_number || ''} - ${report.status || ''}${report.is_official ? ' - Official PPMP' : ' - Legacy record'}${finalizationNote ? ` - ${finalizationNote}` : ''}`;
@@ -3148,8 +3150,16 @@ async function openPPMPRequestReport(orderId, inline = false, returnPanel = 'ppm
   ppmpReportLoading = true;
   updatePPMPReportEditingControls();
   try {
-    const report = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
+    const loadedReport = await apiFetch(`${API}/reports/ppmp-orders/${orderId}`, { loadingMessage: 'Loading requested items...' });
     if (requestId !== ppmpRequestReportOpenRequest || !sourcePanel?.classList.contains('active')) return false;
+    const isOfficePPMPUser = currentUser.role !== 'ADMIN' && hasClientPermission('ppmp.order.create');
+    const finalizationReadOnly = isOfficePPMPUser && (
+      returnPanel === 'ppmp-final'
+      || (loadedReport.status === 'Awaiting Finalization' && returnPanel !== 'ppmp-approved')
+    );
+    const report = finalizationReadOnly
+      ? { ...loadedReport, editable: false, can_submit: false, read_only_final_record: true }
+      : loadedReport;
     ppmpReportReturnPanel = returnPanel;
     renderPPMPRequestReport(report);
     if (inline) {
