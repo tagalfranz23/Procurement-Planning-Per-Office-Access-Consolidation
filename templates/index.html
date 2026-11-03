@@ -4466,7 +4466,18 @@ async function createPPMPSubmissionRequest(button) {
 async function transitionPPMPOrder(orderId, action, button) {
   let note = '';
   if (action === 'return' || action === 'reject') {
-    note = prompt(action === 'return' ? 'Explain what the PPMP creator must complete or correct:' : 'Enter the reason to reject this PPMP:');
+    const isReturn = action === 'return';
+    note = await showFloatingPrompt(
+      isReturn ? 'Explain what the PPMP creator must complete or correct:' : 'Enter the reason to reject this PPMP:',
+      {
+        title: isReturn ? 'Return PPMP to Creator' : 'Reject PPMP',
+        inputLabel: isReturn ? 'Comment for the PPMP creator' : 'Reason for rejection',
+        placeholder: isReturn ? 'Describe the corrections the creator must make' : 'Enter the reason for rejection',
+        confirmLabel: 'Continue',
+        maxLength: 5000,
+        rows: 5,
+      },
+    );
     if (note === null) return;
     if (!note.trim()) return showToast('A reason is required.', 'Wishlist Request', 'warning');
   } else if (!await showFloatingConfirm(`${action === 'submit' ? 'Resubmit' : action === 'process' ? 'Start processing' : action === 'complete' ? 'Complete' : 'Approve'} this PPMP?`)) return;
