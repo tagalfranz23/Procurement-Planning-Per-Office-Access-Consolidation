@@ -2086,6 +2086,11 @@ function escapeHtml(value) {
   return node.innerHTML;
 }
 
+function sortFiscalYearsNewestFirst(rows) {
+  return [...(rows || [])].sort((left, right) =>
+    Number(right?.fiscal_year || 0) - Number(left?.fiscal_year || 0));
+}
+
 function toggleProfile(event) {
   event.stopPropagation();
   const panel = document.getElementById('profile-panel');
@@ -2396,7 +2401,8 @@ async function loadPPMPDashboard() {
     document.getElementById('stat-order-pending').textContent = data.order_pending || 0;
     document.getElementById('stat-consolidation-ready').textContent = data.eligible_for_consolidation || 0;
   }
-  document.getElementById('ppmp-dashboard-records').innerHTML = data.recent_records?.length ? data.recent_records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name || 'Unassigned')}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td></tr>`).join('') : '<tr><td colspan="6">No PPMP documents available.</td></tr>';
+  const recentRecords = sortFiscalYearsNewestFirst(data.recent_records);
+  document.getElementById('ppmp-dashboard-records').innerHTML = recentRecords.length ? recentRecords.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name || 'Unassigned')}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td></tr>`).join('') : '<tr><td colspan="6">No PPMP documents available.</td></tr>';
   await loadDashboardWishlist(false);
   return data;
 }
@@ -2412,7 +2418,8 @@ async function loadAPPDashboard() {
   document.getElementById('app-stat-returned').textContent = status.Returned || 0;
   document.getElementById('app-stat-cse').textContent = data.app_cse_count || 0;
   document.getElementById('app-stat-batches').textContent = data.consolidation_batches || 0;
-  document.getElementById('app-dashboard-recent').innerHTML = data.recent_plans.length ? data.recent_plans.map(plan => `<tr><td>${escapeHtml(plan.office)}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type)}</td><td><span class="pill pill-blue">${escapeHtml(plan.status)}</span></td></tr>`).join('') : '<tr><td colspan="4">No APP records available.</td></tr>';
+  const recentPlans = sortFiscalYearsNewestFirst(data.recent_plans);
+  document.getElementById('app-dashboard-recent').innerHTML = recentPlans.length ? recentPlans.map(plan => `<tr><td>${escapeHtml(plan.office)}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type)}</td><td><span class="pill pill-blue">${escapeHtml(plan.status)}</span></td></tr>`).join('') : '<tr><td colspan="4">No APP records available.</td></tr>';
   await loadAPPConsolidationQueue(false);
   return data;
 }
@@ -2428,7 +2435,8 @@ async function loadAPPConsolidationQueue(showLoading = false) {
     row.count += 1; row.budget += Number(item.estimated_budget || item.total_cost || 0);
     grouped.set(key, row);
   }
-  body.innerHTML = grouped.size ? [...grouped.values()].map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Final PPMP No. 2</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">View Readiness</button></td></tr>`).join('') : '<tr><td colspan="7">No approved, unconsolidated Final PPMP sources are waiting to be consolidated.</td></tr>';
+  const groupedRows = sortFiscalYearsNewestFirst([...grouped.values()].map(row => ({ ...row, fiscal_year: row.item.fiscal_year })));
+  body.innerHTML = groupedRows.length ? groupedRows.map(({item, count, budget}) => `<tr><td><strong>${escapeHtml(item.source_order_reference)}</strong></td><td>${escapeHtml(item.college_code || item.office_code || item.college_name || item.office_name)}</td><td>${item.fiscal_year}</td><td>${count}</td><td class="amount">&#8369; ${fmt(budget)}</td><td>Final PPMP No. 2</td><td><button class="btn btn-primary btn-sm" type="button" onclick="showPanel('consolidation')">View Readiness</button></td></tr>`).join('') : '<tr><td colspan="7">No approved, unconsolidated Final PPMP sources are waiting to be consolidated.</td></tr>';
 }
 
 async function loadAdminOverview() {
@@ -2456,7 +2464,7 @@ async function renderConsolidation() {
     const data = await apiFetch(`${API}/consolidation-readiness${query}`);
     if (requestId !== consolidationLoadRequest) return;
     const years = data.fiscal_years || [];
-    select.innerHTML = '<option value="">Select fiscal year</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    select.innerHTML = '<option value="">Select fiscal year</option>' + [...years].sort((left, right) => Number(right) - Number(left)).map(year => `<option value="${year}">${year}</option>`).join('');
     select.value = previousYear && years.includes(Number(previousYear))
       ? previousYear : String(data.fiscal_year || '');
     const rows = data.offices || [];
@@ -2621,7 +2629,7 @@ async function loadAvailableReports() {
   availableReports = await apiFetch(`${API}/reports/available`, { loadingMessage: 'Loading available reports...' });
   const body = document.getElementById('available-report-list');
   if (body) {
-    body.innerHTML = availableReports.length ? availableReports.map(report => `<tr><td><strong>${escapeHtml(report.title)}</strong></td><td>${escapeHtml(report.office_code || report.office_name)}</td><td>${report.fiscal_year || 'All years'}</td><td>${report.updated_at ? new Date(report.updated_at).toLocaleString() : '—'}</td><td><div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="reviewAvailableReport(${report.id})">View / Review</button>${currentUser.role === 'ADMIN' ? `<button class="btn btn-ghost btn-sm" type="button" onclick="editAvailableReport(${report.id})">Update</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="5">No updated reports are available.</td></tr>';
+    body.innerHTML = availableReports.length ? sortFiscalYearsNewestFirst(availableReports).map(report => `<tr><td><strong>${escapeHtml(report.title)}</strong></td><td>${escapeHtml(report.office_code || report.office_name)}</td><td>${report.fiscal_year || 'All years'}</td><td>${report.updated_at ? new Date(report.updated_at).toLocaleString() : '—'}</td><td><div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="reviewAvailableReport(${report.id})">View / Review</button>${currentUser.role === 'ADMIN' ? `<button class="btn btn-ghost btn-sm" type="button" onclick="editAvailableReport(${report.id})">Update</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="5">No updated reports are available.</td></tr>';
   }
   if (currentUser.role === 'ADMIN') {
     const offices = await apiFetch(`${API}/colleges`, { showLoading: false });
@@ -2651,7 +2659,7 @@ async function generateAuthorizedReport(showLoading = false, query = null) {
   renderCountBarChart('report-office-bars', data.by_office);
   renderCountBarChart('report-item-bars', data.item_frequency);
   renderOrderTrend(data.monthly_trend);
-  document.getElementById('report-records').innerHTML = data.records.length ? data.records.map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.fiscal_year || 'Not specified')}</td><td>${escapeHtml(order.quarter || 'Not specified')}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="event.stopPropagation();openPPMPRequestReport(${order.id}, true)" onkeydown="event.stopPropagation()">View</button></td></tr>`).join('') : '<tr><td colspan="10">No submitted item records.</td></tr>';
+  document.getElementById('report-records').innerHTML = data.records.length ? sortFiscalYearsNewestFirst(data.records).map(order => `<tr${order.is_pending_report ? ` class="report-pending-row" role="button" tabindex="0" onclick="openPPMPRequestReport(${order.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPPMPRequestReport(${order.id})}"` : ''}><td>${escapeHtml(order.reference_number)}</td><td>${escapeHtml(order.fiscal_year || 'Not specified')}</td><td>${escapeHtml(order.quarter || 'Not specified')}</td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${escapeHtml(order.requester_name || 'Legacy requester')}</td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(order.total_quantity)}</td><td class="amount">₱ ${fmt(order.total_amount)}</td><td>${escapeHtml(order.status)}</td><td><button class="btn btn-primary btn-sm" type="button" onclick="event.stopPropagation();openPPMPRequestReport(${order.id}, true)" onkeydown="event.stopPropagation()">View</button></td></tr>`).join('') : '<tr><td colspan="10">No submitted item records.</td></tr>';
 }
 
 function ppmpReportMethodOptions(report, selected) {
@@ -4350,13 +4358,13 @@ async function loadPPMPRequests() {
   }
 
   const submissionBody = document.getElementById('submission-request-list');
-  if (submissionBody) submissionBody.innerHTML = requests.length ? requests.map(row => `<tr><td><strong>${escapeHtml(row.college_code)}</strong><div class="text-xs text-muted">${escapeHtml(row.college_name)}</div></td><td>${row.fiscal_year}</td><td>${escapeHtml(row.requester_name || 'System')}</td><td>${row.due_date ? new Date(`${row.due_date}T00:00:00`).toLocaleDateString() : '—'}</td><td><span class="pill pill-blue">${escapeHtml(row.status)}</span></td><td>${row.ppmp_record_id ? `<button class="btn btn-ghost btn-sm" onclick="openPPMPRecord(${row.ppmp_record_id})">${escapeHtml(row.ppmp_reference_number)}</button><div class="text-xs text-muted">${escapeHtml(row.ppmp_status)}</div>` : 'Not yet created'}</td><td>${escapeHtml(row.notes || '—')}</td></tr>`).join('') : '<tr><td colspan="7">No EO submission requests.</td></tr>';
+  if (submissionBody) submissionBody.innerHTML = requests.length ? sortFiscalYearsNewestFirst(requests).map(row => `<tr><td><strong>${escapeHtml(row.college_code)}</strong><div class="text-xs text-muted">${escapeHtml(row.college_name)}</div></td><td>${row.fiscal_year}</td><td>${escapeHtml(row.requester_name || 'System')}</td><td>${row.due_date ? new Date(`${row.due_date}T00:00:00`).toLocaleDateString() : '—'}</td><td><span class="pill pill-blue">${escapeHtml(row.status)}</span></td><td>${row.ppmp_record_id ? `<button class="btn btn-ghost btn-sm" onclick="openPPMPRecord(${row.ppmp_record_id})">${escapeHtml(row.ppmp_reference_number)}</button><div class="text-xs text-muted">${escapeHtml(row.ppmp_status)}</div>` : 'Not yet created'}</td><td>${escapeHtml(row.notes || '—')}</td></tr>`).join('') : '<tr><td colspan="7">No EO submission requests.</td></tr>';
 
   const recordBody = document.getElementById('ppmp-record-review-list');
-  if (recordBody) recordBody.innerHTML = records.length ? records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${escapeHtml(record.prepared_by_name || 'Legacy record')}</td><td>${record.submitted_at ? new Date(record.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><div class="management-actions"><button class="btn btn-ghost btn-sm" onclick="openPPMPRecord(${record.id})">View 12 Columns</button>${ppmpRecordReviewActions(record)}</div></td></tr>`).join('') : '<tr><td colspan="9">No PPMP documents.</td></tr>';
+  if (recordBody) recordBody.innerHTML = records.length ? sortFiscalYearsNewestFirst(records).map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${escapeHtml(record.prepared_by_name || 'Legacy record')}</td><td>${record.submitted_at ? new Date(record.submitted_at).toLocaleDateString() : '—'}</td><td>${fmtNum(record.item_count)}</td><td class="amount">₱ ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">${escapeHtml(record.status)}</span></td><td><div class="management-actions"><button class="btn btn-ghost btn-sm" onclick="openPPMPRecord(${record.id})">View 12 Columns</button>${ppmpRecordReviewActions(record)}</div></td></tr>`).join('') : '<tr><td colspan="9">No PPMP documents.</td></tr>';
 
   const orderBody = document.getElementById('ppmp-request-list');
-  if (orderBody) orderBody.innerHTML = orders.length ? orders.map(order => {
+  if (orderBody) orderBody.innerHTML = orders.length ? sortFiscalYearsNewestFirst(orders).map(order => {
     const details = order.items.map(item => `<div><strong>${escapeHtml(item.item_name)}</strong> · ${escapeHtml(item.source_type)} · ${fmtNum(item.quantity)} ${escapeHtml(item.unit)} · ₱ ${fmt(item.estimated_budget)}</div>`).join('');
     return `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}<div class="text-xs text-muted">${escapeHtml(order.requester_name || 'Legacy requester')}</div></td><td>${order.submitted_at ? new Date(order.submitted_at).toLocaleDateString() : '—'}</td><td><details><summary>${fmtNum(order.item_count)} item(s)</summary>${details}</details></td><td class="amount">₱ ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.current_stage)}</td><td>${escapeHtml(order.admin_note || order.remarks || '—')}</td><td><div class="management-actions">${ppmpOrderActions(order)}</div></td></tr>`;
   }).join('') : '<tr><td colspan="9">No submitted PPMP items.</td></tr>';
@@ -4485,13 +4493,24 @@ function renderPPMPRecordList() {
   const body = document.getElementById('ppmp-record-list');
   const reuseButton = document.getElementById('ppmp-copy-reuse-button');
   if (reuseButton) reuseButton.disabled = creatingPPMPFromIndicativeCopy;
-  const indicativeOrderRows = wishlistOrders
+  const indicativeOrders = sortFiscalYearsNewestFirst(wishlistOrders
     .filter(order => order.workflow_official && Number(order.ppmp_document_number) === 1
       && !['Draft', 'Submitted'].includes(order.status))
-    .map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official Indicative PPMP No. 1 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-planning')">Open</button></td><td>&mdash;</td></tr>`).join('');
-  const copyRows = indicativeCopies.map(copy => `<tr><td><strong>${escapeHtml(copy.reference_number || `Indicative Copy #${copy.id}`)}</strong></td><td>${escapeHtml(copy.office_code || copy.office_name || '')}</td><td>${copy.fiscal_year}</td><td>${fmtNum(copy.item_count || copy.items?.length || 0)}</td><td class="amount">&#8369; ${fmt(copy.total_budget)}</td><td><span class="pill pill-blue">Indicative copy</span></td><td><div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="openIndicativeCopy(${copy.id})">Open</button>${currentUser?.role !== 'ADMIN' && copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="openPPMPCopyReuseModal(${copy.id})">Use for another year</button>` : ''}</div></td><td>${copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deleteIndicativeCopy(${copy.id},this)">Delete</button>` : '&mdash;'}</td></tr>`).join('');
-  const legacyRows = records.map(record => `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">&#8369; ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">Legacy - ${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" type="button" onclick="selectPPMPRecord(${record.id})">Open</button></td><td>${record.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deletePPMPRecord(${record.id},this)"${deletingPPMPRecordIds.has(record.id) ? ' disabled' : ''}>${deletingPPMPRecordIds.has(record.id) ? 'Deleting...' : 'Delete'}</button>` : '&mdash;'}</td></tr>`).join('');
-  body.innerHTML = indicativeOrderRows + copyRows + legacyRows || '<tr><td colspan="8">Create an Indicative PPMP to see it listed here.</td></tr>';
+    .map(order => ({ fiscal_year: order.fiscal_year, priority: 0, reference: order.reference_number,
+      html: `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official Indicative PPMP No. 1 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-planning')">Open</button></td><td>&mdash;</td></tr>` })));
+  const copyRows = sortFiscalYearsNewestFirst(indicativeCopies).map(copy => ({
+    fiscal_year: copy.fiscal_year, priority: 1, reference: copy.reference_number || `Indicative Copy #${copy.id}`,
+    html: `<tr><td><strong>${escapeHtml(copy.reference_number || `Indicative Copy #${copy.id}`)}</strong></td><td>${escapeHtml(copy.office_code || copy.office_name || '')}</td><td>${copy.fiscal_year}</td><td>${fmtNum(copy.item_count || copy.items?.length || 0)}</td><td class="amount">&#8369; ${fmt(copy.total_budget)}</td><td><span class="pill pill-blue">Indicative copy</span></td><td><div class="management-actions"><button class="btn btn-primary btn-sm" type="button" onclick="openIndicativeCopy(${copy.id})">Open</button>${currentUser?.role !== 'ADMIN' && copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="openPPMPCopyReuseModal(${copy.id})">Use for another year</button>` : ''}</div></td><td>${copy.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deleteIndicativeCopy(${copy.id},this)">Delete</button>` : '&mdash;'}</td></tr>`
+  }));
+  const legacyRows = sortFiscalYearsNewestFirst(records).map(record => ({
+    fiscal_year: record.fiscal_year, priority: 2, reference: record.reference_number,
+    html: `<tr><td><strong>${escapeHtml(record.reference_number)}</strong></td><td>${escapeHtml(record.office_code || record.office_name)}</td><td>${record.fiscal_year}</td><td>${fmtNum(record.item_count)}</td><td class="amount">&#8369; ${fmt(record.total_budget)}</td><td><span class="pill pill-blue">Legacy - ${escapeHtml(record.status)}</span></td><td><button class="btn btn-ghost btn-sm" type="button" onclick="selectPPMPRecord(${record.id})">Open</button></td><td>${record.can_delete ? `<button class="btn btn-primary btn-sm" type="button" onclick="deletePPMPRecord(${record.id},this)"${deletingPPMPRecordIds.has(record.id) ? ' disabled' : ''}>${deletingPPMPRecordIds.has(record.id) ? 'Deleting...' : 'Delete'}</button>` : '&mdash;'}</td></tr>`
+  }));
+  const rows = [...indicativeOrders, ...copyRows, ...legacyRows].sort((left, right) =>
+    Number(right.fiscal_year || 0) - Number(left.fiscal_year || 0)
+    || left.priority - right.priority
+    || String(left.reference || '').localeCompare(String(right.reference || '')));
+  body.innerHTML = rows.map(row => row.html).join('') || '<tr><td colspan="8">Create an Indicative PPMP to see it listed here.</td></tr>';
 }
 
 function openPPMPCopyReuseModal(copyId) {
@@ -4561,7 +4580,8 @@ async function loadFinalPPMP() {
   const requestId = ++finalPPMPLoadRequest;
   const records = await apiFetch(`${API}/ppmp-final-records`, { loadingMessage: 'Loading Final PPMP records...' });
   if (requestId !== finalPPMPLoadRequest) return;
-  body.innerHTML = records.length ? records.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">Final PPMP No. 2 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP No. 2 records are available for your office or college.</td></tr>';
+  const sortedRecords = sortFiscalYearsNewestFirst(records);
+  body.innerHTML = sortedRecords.length ? sortedRecords.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || 'Unassigned')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-blue">Final PPMP No. 2 - ${escapeHtml(order.status)}</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openFinalPPMPReport(${order.id})">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Final PPMP No. 2 records are available for your office or college.</td></tr>';
 }
 
 async function loadApprovedPPMP() {
@@ -4570,9 +4590,9 @@ async function loadApprovedPPMP() {
   const requestId = ++approvedPPMPLoadRequest;
   const records = await apiFetch(`${API}/ppmp-orders?status=${encodeURIComponent('Awaiting Finalization')}`, { loadingMessage: 'Loading approved PPMPs...' });
   if (requestId !== approvedPPMPLoadRequest) return;
-  const approved = records.filter(order => order.workflow_official
+  const approved = sortFiscalYearsNewestFirst(records.filter(order => order.workflow_official
     && order.status === 'Awaiting Finalization'
-    && [1, 2].includes(Number(order.ppmp_document_number)));
+    && [1, 2].includes(Number(order.ppmp_document_number))));
   body.innerHTML = approved.length ? approved.map(order => {
     const finalSaved = Number(order.ppmp_document_number) === 2;
     const type = finalSaved ? 'Final PPMP No. 2' : 'Indicative PPMP No. 1';
@@ -4587,9 +4607,9 @@ async function loadSubmittedPPMP() {
   const requestId = ++submittedPPMPLoadRequest;
   const orders = await apiFetch(`${API}/ppmp-orders`, { loadingMessage: 'Loading submitted PPMPs...' });
   if (requestId !== submittedPPMPLoadRequest) return;
-  const submitted = orders.filter(order => order.workflow_official
+  const submitted = sortFiscalYearsNewestFirst(orders.filter(order => order.workflow_official
     && Number(order.ppmp_document_number) === 1
-    && order.status === 'Submitted');
+    && order.status === 'Submitted'));
   body.innerHTML = submitted.length ? submitted.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official Indicative PPMP No. 1 - Submitted</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-submitted')">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No submitted Indicative PPMP No. 1 records.</td></tr>';
 }
 
@@ -4599,9 +4619,9 @@ async function loadPPMPDrafts() {
   const requestId = ++draftPPMPLoadRequest;
   const orders = await apiFetch(`${API}/ppmp-orders`, { loadingMessage: 'Loading PPMP drafts...' });
   if (requestId !== draftPPMPLoadRequest) return;
-  const drafts = orders.filter(order => order.workflow_official
+  const drafts = sortFiscalYearsNewestFirst(orders.filter(order => order.workflow_official
     && Number(order.ppmp_document_number) === 1
-    && order.status === 'Draft');
+    && order.status === 'Draft'));
   body.innerHTML = drafts.length ? drafts.map(order => `<tr><td><strong>${escapeHtml(order.reference_number)}</strong></td><td>${escapeHtml(order.office_code || order.office_name || '')}</td><td>${order.fiscal_year}</td><td>${fmtNum(order.item_count)}</td><td class="amount">&#8369; ${fmt(order.total_amount)}</td><td><span class="pill pill-gold">Official Indicative PPMP No. 1 - Draft</span></td><td><button class="btn btn-primary btn-sm" type="button" onclick="openPPMPRequestReport(${order.id}, false, 'ppmp-draft')">Open</button></td></tr>`).join('') : '<tr><td colspan="7">No Indicative PPMP drafts.</td></tr>';
 }
 
@@ -4797,7 +4817,7 @@ function ppmpDraftYearAvailability() {
   const validYear = year => Number.isInteger(year) && year >= 2026 && year <= 2100;
   const requestedYears = [...new Set(wishlistOrders
     .filter(order => currentUser && (order.workflow_official || order.is_official) && ['Approved', 'Processing', 'Completed'].includes(order.status) && (currentUser.role === 'ADMIN' || order.office_id === currentUser.college_id))
-    .map(order => Number(order.fiscal_year)).filter(validYear))].sort((left, right) => left - right);
+    .map(order => Number(order.fiscal_year)).filter(validYear))].sort((left, right) => right - left);
   const existingYears = new Set(indicativeCopies.filter(copy => currentUser && copy.office_id === currentUser.college_id)
     .map(copy => Number(copy.fiscal_year)).filter(validYear));
   return { requestedYears, existingYears, eligibleYears: requestedYears.filter(year => !existingYears.has(year)) };
@@ -5031,7 +5051,7 @@ async function loadApps() {
   ]);
   appPlans = plans; appMetadata = metadata;
   document.getElementById('app-section-suggestions').innerHTML = (metadata.suggested_sections || []).map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
-  document.getElementById('app-list').innerHTML = plans.length ? plans.map(plan => {
+  document.getElementById('app-list').innerHTML = plans.length ? sortFiscalYearsNewestFirst(plans).map(plan => {
     const statusLabel = plan.status === 'Finalized' && Number(plan.workflow_version || 1) >= 2 ? 'Final APP Record' : plan.status;
     return `<tr><td>${escapeHtml(plan.office)}</td><td>${plan.fiscal_year}</td><td>${escapeHtml(plan.plan_type.replaceAll('_',' '))}</td><td>${plan.section_count}</td><td>${plan.item_count}</td><td class="amount">&#8369; ${fmt(plan.totals.overall)}</td><td><span class="pill ${['Approved','Finalized'].includes(plan.status)?'pill-green':['Returned','Rejected'].includes(plan.status)?'pill-red':'pill-gold'}">${escapeHtml(statusLabel)}</span></td><td>${escapeHtml(plan.expected_reviewer || (plan.status === 'Returned' ? `Admin correction, then ${plan.return_stage || plan.returned_from_role || 'returning reviewer'}` : ''))}</td><td><div class="management-actions">${appPlanActions(plan)}</div></td></tr>`;
   }).join('') : '<tr><td colspan="9">The APP draft will appear here after Admin consolidates all approved Final PPMP No. 2 submissions.</td></tr>';
