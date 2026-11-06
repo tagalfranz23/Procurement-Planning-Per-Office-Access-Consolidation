@@ -562,6 +562,28 @@ class WishlistItem(db.Model):
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
 
+class NonCSEMasterItem(db.Model):
+    """Reusable Non-CSE project descriptions maintained separately from the CSE catalog."""
+    __tablename__ = 'non_cse_master_items'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    seed_key = db.Column(db.String(80), unique=True, nullable=True)
+    item_description = db.Column(Text, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'item_description': self.item_description,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class DepartmentPPMPSubmission(db.Model):
     """Historical department submission retained after workflow removal."""
     __tablename__ = 'department_ppmp_submissions'
