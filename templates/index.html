@@ -1302,29 +1302,31 @@ td.center{text-align:center}
     </div>
   </section>
 
-  <!-- ══ CONSOLIDATION ══════════════════════════════ -->
+  <!-- NON-CSE MASTER LIST -->
   <section class="panel" id="panel-non-cse-master-list">
     <div class="page-header">
       <div>
         <h1>NON-CSE Master List</h1>
-        <p>Items outside the CSE catalog are added to the PPMP they belong to.</p>
+        <p>Catalog of non-CSE procurement project descriptions.</p>
       </div>
-      {% if is_admin %}
-      <button class="btn btn-primary" type="button" onclick="showPanel('ppmp-planning')">Open PPMP Documents</button>
-      {% else %}
-      <button class="btn btn-primary" type="button" onclick="openCustomPPMPItem()">Add Non-CSE Item to PPMP</button>
-      {% endif %}
+      <button class="btn btn-primary" type="button" onclick="loadNonCSEMasterList(true)">Refresh</button>
     </div>
+    {% if is_admin %}
     <div class="card">
-      <div class="card-header"><span class="card-title">About Non-CSE Items</span></div>
+      <div class="card-header"><span class="card-title" id="non-cse-master-form-title">Add Item to NON-CSE Master List</span></div>
       <div class="card-body">
-        {% if is_admin %}
-        <p class="text-muted">Non-CSE items are recorded in the originating office or college PPMP. Open PPMP Documents to review those submissions.</p>
-        {% else %}
-        <p class="text-muted">Add a non-CSE item from your PPMP draft. It will be saved with that PPMP and can be edited in its report table.</p>
-        <div class="management-actions mt-12"><button class="btn btn-ghost" type="button" onclick="showPanel('ppmp-draft')">Open PPMP Drafts</button></div>
-        {% endif %}
+        <div class="filter-row">
+          <input class="filter-input" id="non-cse-master-description" maxlength="3000" placeholder="NON-CSE item description">
+          <button class="btn btn-primary" id="non-cse-master-save-button" type="button" onclick="saveNonCSEMasterItem(this)">Add Item</button>
+          <button class="btn btn-ghost" id="non-cse-master-cancel-button" type="button" onclick="resetNonCSEMasterItemForm()" hidden>Cancel Edit</button>
+        </div>
       </div>
+    </div>
+    {% endif %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">NON-CSE Master List Items</span></div>
+      <div class="card-body"><div class="filter-row"><input class="filter-input" id="non-cse-master-search" placeholder="Search NON-CSE items..." oninput="queueNonCSEMasterSearch()"></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Item Description</th><th>Action</th></tr></thead><tbody id="non-cse-master-list-body"><tr><td colspan="2">Loading NON-CSE Master List items...</td></tr></tbody></table></div>
     </div>
   </section>
 
@@ -1750,8 +1752,11 @@ let editingAPPContributionItemId = null;
 const pendingAPPProcurementModes = new Map();
 let ppmpReportReturnPanel = 'ppmp-request-records';
 let masterWishlistItems = [];
+let nonCSEMasterItems = [];
 let orderDraftItems = [];
 let editingWishlistItemId = null;
+let editingNonCSEMasterItemId = null;
+let nonCSEMasterSearchTimer = null;
 let wishlistCommentOrderId = null;
 let availableReports = [];
 let editingAvailableReportId = null;
@@ -4144,6 +4149,7 @@ async function showPanel(id, el, reportQuery = null) {
   if (id === 'app-dashboard') loadAPPDashboard();
   if (id === 'ppmp-requests') panelLoad = loadPPMPRequests();
   if (id === 'ppmp-wishlist') loadWishlist();
+  if (id === 'non-cse-master-list') panelLoad = loadNonCSEMasterList();
   if (id === 'cse-selected-items') renderOrderDraft();
   if (id === 'ppmp-planning') panelLoad = loadPPMPPlanning();
   if (id === 'ppmp-draft') panelLoad = loadPPMPDrafts();
@@ -4222,6 +4228,106 @@ function queueDashboardWishlistSearch() {
   dashboardWishlistSearchTimer = setTimeout(() => {
     loadDashboardWishlist(false).catch(error => showToast(error.message, 'CSE Master List Search', 'error'));
   }, SEARCH_DEBOUNCE_MS);
+}
+
+function queueNonCSEMasterSearch() {
+  clearTimeout(nonCSEMasterSearchTimer);
+  nonCSEMasterSearchTimer = setTimeout(() => {
+    loadNonCSEMasterList(false).catch(error => showToast(error.message, 'NON-CSE Master List', 'error'));
+  }, SEARCH_DEBOUNCE_MS);
+}
+
+async function loadNonCSEMasterList(showLoading = false) {
+  const body = document.getElementById('non-cse-master-list-body');
+  if (!body) return;
+  const search = document.getElementById('non-cse-master-search')?.value.trim() || '';
+  const items = await apiFetch(`${API}/non-cse-master-list${search ? `?search=${encodeURIComponent(search)}` : ''}`, {
+    showLoading, loadingMessage: 'Loading NON-CSE Master List items...'
+  });
+  nonCSEMasterItems = items;
+  body.innerHTML = items.length ? items.map(item => {
+    let action = '<span class="text-xs text-muted">View only</span>';
+    if (currentUser?.role === 'ADMIN') {
+      action = `<div class="management-actions"><button class="btn btn-ghost btn-sm" type="button" onclick="editNonCSEMasterItem(${item.id})">Edit</button><button class="btn btn-danger btn-sm" type="button" onclick="deleteNonCSEMasterItem(${item.id},this)">Delete</button></div>`;
+    } else if (hasClientPermission('ppmp.order.create')) {
+      action = `<button class="btn btn-primary btn-sm" type="button" onclick="addNonCSEMasterItemToPPMP(${item.id})">Add to PPMP</button>`;
+    }
+    return `<tr><td>${escapeHtml(item.item_description)}</td><td>${action}</td></tr>`;
+  }).join('') : '<tr><td colspan="2">No NON-CSE Master List items match this search.</td></tr>';
+}
+
+async function saveNonCSEMasterItem(button) {
+  if (currentUser?.role !== 'ADMIN') return;
+  const description = document.getElementById('non-cse-master-description')?.value.trim() || '';
+  if (!description) return showToast('Enter a NON-CSE item description.', 'NON-CSE Master List', 'warning');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  try {
+    const id = editingNonCSEMasterItemId;
+    await apiFetch(id ? `${API}/non-cse-master-list/${id}` : `${API}/non-cse-master-list`, {
+      method: id ? 'PUT' : 'POST',
+      loadingMessage: 'Saving NON-CSE Master List item...',
+      body: JSON.stringify({ item_description: description }),
+    });
+    resetNonCSEMasterItemForm();
+    await loadNonCSEMasterList();
+    showToast(id ? 'NON-CSE item updated.' : 'NON-CSE item added.', 'NON-CSE Master List', 'success');
+  } catch (error) {
+    showToast(error.message, 'NON-CSE Master List', 'error');
+  } finally {
+    button.disabled = false;
+    if (button.textContent === 'Saving...') button.textContent = original;
+  }
+}
+
+function editNonCSEMasterItem(itemId) {
+  if (currentUser?.role !== 'ADMIN') return;
+  const item = nonCSEMasterItems.find(row => Number(row.id) === Number(itemId));
+  if (!item) return showToast('Reload the NON-CSE Master List and try again.', 'NON-CSE Master List', 'warning');
+  editingNonCSEMasterItemId = item.id;
+  document.getElementById('non-cse-master-description').value = item.item_description;
+  document.getElementById('non-cse-master-form-title').textContent = 'Edit NON-CSE Master List Item';
+  document.getElementById('non-cse-master-save-button').textContent = 'Save Changes';
+  document.getElementById('non-cse-master-cancel-button').hidden = false;
+  document.getElementById('non-cse-master-description').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('non-cse-master-description').focus();
+}
+
+function resetNonCSEMasterItemForm() {
+  editingNonCSEMasterItemId = null;
+  const description = document.getElementById('non-cse-master-description');
+  const title = document.getElementById('non-cse-master-form-title');
+  const save = document.getElementById('non-cse-master-save-button');
+  const cancel = document.getElementById('non-cse-master-cancel-button');
+  if (description) description.value = '';
+  if (title) title.textContent = 'Add Item to NON-CSE Master List';
+  if (save) save.textContent = 'Add Item';
+  if (cancel) cancel.hidden = true;
+}
+
+async function deleteNonCSEMasterItem(itemId, button) {
+  if (currentUser?.role !== 'ADMIN' || !await showFloatingConfirm('Delete this item from the NON-CSE Master List?')) return;
+  button.disabled = true;
+  try {
+    await apiFetch(`${API}/non-cse-master-list/${itemId}`, { method: 'DELETE', loadingMessage: 'Deleting NON-CSE Master List item...' });
+    if (editingNonCSEMasterItemId === itemId) resetNonCSEMasterItemForm();
+    await loadNonCSEMasterList();
+    showToast('NON-CSE item deleted.', 'NON-CSE Master List', 'success');
+  } catch (error) {
+    button.disabled = false;
+    showToast(error.message, 'NON-CSE Master List', 'error');
+  }
+}
+
+async function addNonCSEMasterItemToPPMP(itemId) {
+  if (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.order.create')) return;
+  const item = nonCSEMasterItems.find(row => Number(row.id) === Number(itemId));
+  if (!item) return showToast('Reload the NON-CSE Master List and try again.', 'NON-CSE Master List', 'warning');
+  if (await showPanel('cse-user-add-item') === false) return;
+  document.getElementById('custom-item-name').value = item.item_description;
+  document.getElementById('custom-item-category')?.focus();
+  showToast('Complete the category, unit, quantity, and estimated cost to add this item to your PPMP.', 'NON-CSE Item', 'info');
 }
 
 async function loadWishlist(showLoading = false) {
