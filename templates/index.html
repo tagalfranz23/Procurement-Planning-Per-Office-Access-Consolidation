@@ -139,6 +139,12 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .cse-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .cse-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
 .cse-submenu .nav-item:hover,.cse-submenu .nav-item.active{background:var(--sky)}
+.ppmp-dashboard-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.ppmp-dashboard-submenu-toggle:hover,.ppmp-dashboard-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.ppmp-dashboard-submenu-toggle span{transition:transform .15s}
+.ppmp-dashboard-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.ppmp-dashboard-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.ppmp-dashboard-submenu .nav-item:hover,.ppmp-dashboard-submenu .nav-item.active{background:var(--sky)}
 .admin-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
 .admin-submenu-toggle:hover,.admin-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
 .admin-submenu-toggle span{transition:transform .15s}
@@ -775,7 +781,13 @@ td.center{text-align:center}
     {% endif %}
     <div class="nav-item" id="ppmp-dashboard-nav" data-panel="ppmp-dashboard" onclick="showPanel('ppmp-dashboard',this)" hidden>
       {% if is_admin %}<span class="icon"></span>{% endif %} PPMP Dashboard
+      {% if not is_admin %}<button class="ppmp-dashboard-submenu-toggle" id="ppmp-dashboard-submenu-toggle" type="button" aria-label="Toggle PPMP Dashboard submenu" aria-expanded="false" aria-controls="ppmp-dashboard-submenu" onclick="togglePPMPDashboardMenu(event)"><span aria-hidden="true">&#9662;</span></button>{% endif %}
     </div>
+    {% if not is_admin %}
+    <div class="ppmp-dashboard-submenu" id="ppmp-dashboard-submenu" hidden>
+      <button class="nav-item" id="non-cse-master-nav" type="button" data-panel="non-cse-master-list" data-permission="ppmp.view" onclick="showPanel('non-cse-master-list',this)">NON-CSE Master List</button>
+    </div>
+    {% endif %}
     <div class="nav-item" id="app-dashboard-nav" data-panel="app-dashboard" onclick="showPanel('app-dashboard',this)" hidden>
       <span class="icon"></span> APP Dashboard
     </div>
@@ -811,9 +823,11 @@ td.center{text-align:center}
       <button class="nav-item" id="cse-add-item-nav" type="button" data-panel="cse-add-item" onclick="openCSEMasterItemForm()">Add/Edit Item</button>
     </div>
     {% endif %}
+    {% if is_admin %}
     <div class="nav-item" id="non-cse-master-nav" data-panel="non-cse-master-list" data-permission="ppmp.view" onclick="showPanel('non-cse-master-list',this)" hidden>
       <span class="icon"></span> NON-CSE Master List
     </div>
+    {% endif %}
     {% if is_admin %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       <span class="icon"></span> PPMP Requests
@@ -2091,13 +2105,13 @@ async function loadCurrentUser() {
   const setHidden = (id, hidden) => { const element = document.getElementById(id); if (element) element.hidden = hidden; };
   setHidden('admin-dashboard-nav', currentUser.role !== 'ADMIN');
   setHidden('ppmp-dashboard-nav', !allowed('ppmp.view'));
+  setHidden('ppmp-dashboard-submenu-toggle', currentUser.role === 'ADMIN' || !allowed('ppmp.view'));
   setHidden('app-dashboard-nav', !allowed('app.view') || currentUser.role === 'PROCUREMENT');
   document.getElementById('ppmp-items-nav').hidden = !allowed('ppmp.record.view');
   setHidden('ppmp-draft-nav', currentUser.role === 'ADMIN' || !allowed('ppmp.order.create'));
   setHidden('ppmp-submitted-nav', currentUser.role === 'ADMIN' || !allowed('ppmp.order.create'));
   document.getElementById('ppmp-final-nav').hidden = !allowed('ppmp.order.view');
   setHidden('ppmp-master-nav', !allowed('ppmp.view'));
-  setHidden('non-cse-master-nav', !allowed('ppmp.view'));
   setHidden('ppmp-request-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.order.view'));
   setHidden('consolidation-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
   document.getElementById('app-nav').hidden = !allowed('app.view');
@@ -4068,6 +4082,22 @@ function toggleAdminOverviewMenu(event) {
   if (submenu) setAdminOverviewMenuExpanded(submenu.hidden);
 }
 
+function setPPMPDashboardMenuExpanded(expanded) {
+  const submenu = document.getElementById('ppmp-dashboard-submenu');
+  const toggle = document.getElementById('ppmp-dashboard-submenu-toggle');
+  if (currentUser?.role === 'ADMIN' || !hasClientPermission('ppmp.view') || !submenu || !toggle) return;
+  const isExpanded = Boolean(expanded);
+  submenu.hidden = !isExpanded;
+  toggle.setAttribute('aria-expanded', String(isExpanded));
+}
+
+function togglePPMPDashboardMenu(event) {
+  event.stopPropagation();
+  if (currentUser?.role === 'ADMIN' || !hasClientPermission('ppmp.view')) return;
+  const submenu = document.getElementById('ppmp-dashboard-submenu');
+  if (submenu) setPPMPDashboardMenuExpanded(submenu.hidden);
+}
+
 function setCSEMasterMenuExpanded(expanded) {
   const submenu = document.getElementById('cse-master-submenu');
   const toggle = document.getElementById('cse-submenu-toggle');
@@ -4128,6 +4158,10 @@ async function showPanel(id, el, reportQuery = null) {
   if (id === 'ppmp-requests' || id === 'ppmp-request-records') {
     setPPMPRequestsMenuExpanded(true);
     document.getElementById('ppmp-request-nav')?.classList.add('active');
+  }
+  if (id === 'non-cse-master-list' && currentUser?.role !== 'ADMIN') {
+    setPPMPDashboardMenuExpanded(true);
+    document.getElementById('ppmp-dashboard-nav')?.classList.add('active');
   }
   if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
     setAdminOverviewMenuExpanded(true);
