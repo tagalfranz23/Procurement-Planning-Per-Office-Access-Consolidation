@@ -811,6 +811,9 @@ td.center{text-align:center}
       <button class="nav-item" id="cse-add-item-nav" type="button" data-panel="cse-add-item" onclick="openCSEMasterItemForm()">Add/Edit Item</button>
     </div>
     {% endif %}
+    <div class="nav-item" id="non-cse-master-nav" data-panel="non-cse-master-list" data-permission="ppmp.view" onclick="showPanel('non-cse-master-list',this)" hidden>
+      <span class="icon"></span> NON-CSE Master List
+    </div>
     {% if is_admin %}
     <div class="nav-item" id="ppmp-request-nav" data-panel="ppmp-requests" onclick="showPanel('ppmp-requests',this)" hidden>
       <span class="icon"></span> PPMP Requests
@@ -1300,6 +1303,31 @@ td.center{text-align:center}
   </section>
 
   <!-- ══ CONSOLIDATION ══════════════════════════════ -->
+  <section class="panel" id="panel-non-cse-master-list">
+    <div class="page-header">
+      <div>
+        <h1>NON-CSE Master List</h1>
+        <p>Items outside the CSE catalog are added to the PPMP they belong to.</p>
+      </div>
+      {% if is_admin %}
+      <button class="btn btn-primary" type="button" onclick="showPanel('ppmp-planning')">Open PPMP Documents</button>
+      {% else %}
+      <button class="btn btn-primary" type="button" onclick="openCustomPPMPItem()">Add Non-CSE Item to PPMP</button>
+      {% endif %}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">About Non-CSE Items</span></div>
+      <div class="card-body">
+        {% if is_admin %}
+        <p class="text-muted">Non-CSE items are recorded in the originating office or college PPMP. Open PPMP Documents to review those submissions.</p>
+        {% else %}
+        <p class="text-muted">Add a non-CSE item from your PPMP draft. It will be saved with that PPMP and can be edited in its report table.</p>
+        <div class="management-actions mt-12"><button class="btn btn-ghost" type="button" onclick="showPanel('ppmp-draft')">Open PPMP Drafts</button></div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-consolidation">
     <div class="page-header">
       <div>
@@ -2064,6 +2092,7 @@ async function loadCurrentUser() {
   setHidden('ppmp-submitted-nav', currentUser.role === 'ADMIN' || !allowed('ppmp.order.create'));
   document.getElementById('ppmp-final-nav').hidden = !allowed('ppmp.order.view');
   setHidden('ppmp-master-nav', !allowed('ppmp.view'));
+  setHidden('non-cse-master-nav', !allowed('ppmp.view'));
   setHidden('ppmp-request-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.order.view'));
   setHidden('consolidation-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
   document.getElementById('app-nav').hidden = !allowed('app.view');
@@ -4073,6 +4102,7 @@ async function openCSEMasterItemForm() {
 }
 
 async function showPanel(id, el, reportQuery = null) {
+  if (id === 'non-cse-master-list' && (!currentUser || !hasClientPermission('ppmp.view'))) return false;
   if (currentUser?.role === 'PROCUREMENT' && ['app-dashboard', 'apps'].includes(id)) return false;
   if (['ppmp-requests', 'ppmp-request-records'].includes(id) && currentUser?.role !== 'ADMIN') return false;
   if (id === 'ppmp-approved' && (!currentUser || currentUser.role === 'ADMIN' || !hasClientPermission('ppmp.order.create'))) return false;
@@ -5422,3 +5452,4 @@ function fmtNum(n) {
 </script>
 </body>
 </html>
+
