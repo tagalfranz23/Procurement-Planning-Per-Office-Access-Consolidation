@@ -41,7 +41,7 @@ from models import (
     APPApproval, APPComment, APPItem, APPSection, AnnualProcurementPlan,
     College, ConsolidationBatch, ConsolidationSource,
     DepartmentPPMPReviewCopy, DepartmentPPMPReviewItem, DepartmentPPMPSubmission,
-    DepartmentPPMPSubmissionItem,
+    DepartmentPPMPSubmissionItem, NonCSEMasterItem,
     PasswordResetRequest, PPMPAuditLog, PPMPComment, PPMPConsolidationLog, PPMPItem, PPMPNotification,
     PPMPOrder, PPMPOrderItem, PPMPRecord, PPMPRecordItem, PPMPReport, PPMPSubmissionRequest,
     Survey, SurveyRecipient, User, UserActivityLog, WishlistItem,
@@ -72,6 +72,75 @@ STATUSES = list(PPMPItem.STATUSES)
 PPMP_ORDER_CATEGORIES = ('Goods', 'Infrastructure', 'Consulting Services')
 PPMP_ORDER_FUND_SOURCES = ('GAA/101', 'SB 164', '161', '601')
 PPMP_ORDER_TYPES = ('Goods/Services', 'Infrastructure', 'Consulting Services')
+NON_CSE_MASTER_SEED_ITEMS = (
+    'Supply and Delivery of ICT Office Supplies',
+    'Supply and Delivery of Accountable Forms',
+    'Supply and Delivery of Medical, Dental and Laboratory Supplies',
+    'Supply and Delivery of Drugs and Medicines',
+    'Supply and Delivery of Semi-Expendable Machinery and Equipment Expenses-Office Equipment',
+    'Supply and Delivery of Semi-Expendable Machinery and Equipment Expenses-Information and Communications Technology Equipment',
+    'Supply and Delivery of Semi-Expendable Machinery and Equipment Expenses-Information and Communication Technology Equipment',
+    'Supply and Delivery of Semi-Expendable Machinery and Equipment Expenses-Other Machinery and Equipment',
+    'Supply and Delivery of Semi-Expendable Machinery and Equipment Expenses-Scientific and Technical Equipment',
+    'Supply and Delivery of Semi-Expendable Furniture and Fixtures Expenses-Furniture and Fixtures',
+    'Supply and Delivery of Semi-Expendable Furniture and Fixtures Expenses-Books',
+    'Supply and Delivery of Semi-Expendable Furniture, Fixtures and Books Expenses-Furniture and Fixtures',
+    'Supply and Delivery of Semi-Expendable Furniture, Fixtures and Books Expenses-Books',
+    'Supply and Delivery of Other Supplies and Materials',
+    'Procurement of Internet Subscription',
+    'Procurement of Janitorial Services',
+    'Procurement of Security Services',
+    'Procurement for the Repair & Maintenance-Buildings and Other Structures - Buildings and Other Structures',
+    'Procurement for the Repair & Maintenance-Buildings and Other Structures - School Buildings and Dormitories',
+    'Procurement for the Repair & Maintenance-Machinery',
+    'Procurement for the Repair & Maintenance-Motor Vehicles',
+    'Repair & Maintenance-Motor Vehicles',
+    'Procurement for Printing and Publication',
+    'Procurement for Representation Expenses',
+    'Procurement of Representation Expenses',
+    'Membership Dues and Contributions to Organizations',
+    'Membership Dues & Contributions To Org.',
+    'Supply and Delivery of Agricultural and Marine Supplies Expenses',
+    'Supply and Delivery of Textbooks and Instructional Materials',
+    'Procurement of Subscription Expenses-ICT Software Subscription',
+    'Subscription Expenses-Library and Other Reading Materials',
+    'Procurement of Other Subscriptions',
+    'Subsidies-Others',
+    'Taxes, Duties and Licenses',
+    'Labor and Wages',
+    'Travel Expenses-Local',
+    'Travel Expenses-Foreign',
+    'Training Expenses',
+    'Procurement of Fuel, Oil and Lubricants',
+    'Water Expenses',
+    'Electricity Expenses',
+    'Telephone Expenses-mobile',
+    'Telephone Expenses-landline',
+    'Fidelity Bond Premiums',
+    'Insurance Expenses',
+    'Procurement of Other Professional Services',
+    'Procurement of Other General Services',
+    'Supply and Delivery of Common-use Office Supplies Expenses',
+    'Supply and Delivery of Common-use Office Supplies',
+    'Construction of School Buildings',
+    'Infrastructure Other Structures',
+    'Procurement of Information and Communication Technology Equipment',
+    'Procurement of Technical and Scientific Equipment',
+    'Procurement of Other Machinery and Equipment',
+    'Supply and Delivery of Office Equipment',
+    'Supply and Delivery of Technical & Scientific Equipment',
+    'Supply and Delivery of Motor Vehicles',
+    'Awards/Rewards',
+    'Rewards and Incentives',
+    'Scholarship Expenses',
+    'Research, Exploration and Development Expenses',
+    'Procurement of Website Maintenance',
+    'Procurement of Other Maintenance and Operating Expenses',
+    'Capital Outlay',
+    'SUC Wide Common Administrative Cost-BOR Meeting',
+    'University Operating Expenses-MOOE',
+    'SUC Wide Common Funds-Other MOOE',
+)
 PPMP_REPORT_PROCUREMENT_METHODS = (
     'Competitive Bidding',
     'Competitive Dialogue',
@@ -636,6 +705,7 @@ def verify_database_schema():
         },
         'ppmp_comments': {'ppmp_record_id', 'ppmp_record_item_id', 'wishlist_order_id', 'comment_type'},
         'workflow_audit_log': {'ip_address'},
+        'non_cse_master_items': {'seed_key', 'item_description', 'is_active', 'created_by', 'created_at', 'updated_at'},
     }
     for table_name, expected in workflow_required_columns.items():
         required_columns.setdefault(table_name, set()).update(expected)
@@ -665,6 +735,7 @@ def initialize_database(apply_migrations=False):
                 db.metadata.create_all(bind=db.engine, tables=[
                     table for name, table in db.metadata.tables.items() if name not in retired_tables
                 ])
+                seed_non_cse_master_items()
                 apply_workflow_migrations(db)
                 migrate_revision_schema()
                 ensure_admin_account()
@@ -698,6 +769,19 @@ def initialize_database(apply_migrations=False):
         except SQLAlchemyError as error:
             db.session.rollback()
             raise RuntimeError(f"{db.engine.dialect.name} initialization failed. See the server log for details.") from error
+
+
+def seed_non_cse_master_items():
+    """Insert the supplied Non-CSE descriptions once; admin edits/deletions stay intact."""
+    existing_keys = {
+        seed_key for (seed_key,) in db.session.query(NonCSEMasterItem.seed_key)
+        .filter(NonCSEMasterItem.seed_key.isnot(None)).all()
+    }
+    for index, description in enumerate(NON_CSE_MASTER_SEED_ITEMS, start=1):
+        seed_key = f'initial-v1-{index:03d}'
+        if seed_key not in existing_keys:
+            db.session.add(NonCSEMasterItem(seed_key=seed_key, item_description=description))
+    db.session.commit()
 
 
 def migrate_revision_schema():
@@ -2482,6 +2566,68 @@ def update_wishlist(item_id):
             return jsonify({"error": "Estimated cost cannot be negative."}), 400
         item.estimated_cost = value
     audit("wishlist_item", item.id, "UPDATE")
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+
+@app.route('/api/non-cse-master-list', methods=['GET', 'POST'])
+def non_cse_master_list():
+    if request.method == 'GET':
+        query = NonCSEMasterItem.query.filter_by(is_active=True)
+        search = (request.args.get('search') or '').strip()
+        if search:
+            query = query.filter(NonCSEMasterItem.item_description.ilike(f'%{search}%'))
+        return jsonify([
+            item.to_dict() for item in query.order_by(NonCSEMasterItem.id.asc()).all()
+        ])
+
+    user = current_session_user()
+    if user is None or user.role != 'ADMIN':
+        return jsonify({'error': 'Only the administrator can add NON-CSE Master List items.'}), 403
+    data = request.get_json(silent=True) or {}
+    description = (data.get('item_description') or '').strip()
+    if not description or len(description) > 3000:
+        return jsonify({'error': 'Enter a NON-CSE item description up to 3,000 characters.'}), 400
+    duplicate = NonCSEMasterItem.query.filter(
+        NonCSEMasterItem.is_active.is_(True),
+        db.func.lower(NonCSEMasterItem.item_description) == description.lower(),
+    ).first()
+    if duplicate:
+        return jsonify({'error': 'This item is already in the NON-CSE Master List.'}), 409
+    item = NonCSEMasterItem(item_description=description, created_by=user.id)
+    db.session.add(item)
+    db.session.flush()
+    audit('non_cse_master_item', item.id, 'CREATE')
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@app.route('/api/non-cse-master-list/<int:item_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def manage_non_cse_master_item(item_id):
+    item = db.session.get(NonCSEMasterItem, item_id)
+    if item is None or not item.is_active:
+        return jsonify({'error': 'NON-CSE Master List item not found.'}), 404
+
+    if request.method == 'DELETE':
+        item.is_active = False
+        audit('non_cse_master_item', item.id, 'DELETE')
+        db.session.commit()
+        return jsonify({'deleted': item_id})
+
+    data = request.get_json(silent=True) or {}
+    description = (data.get('item_description') or '').strip()
+    if not description or len(description) > 3000:
+        return jsonify({'error': 'Enter a NON-CSE item description up to 3,000 characters.'}), 400
+    duplicate = NonCSEMasterItem.query.filter(
+        NonCSEMasterItem.id != item.id,
+        NonCSEMasterItem.is_active.is_(True),
+        db.func.lower(NonCSEMasterItem.item_description) == description.lower(),
+    ).first()
+    if duplicate:
+        return jsonify({'error': 'This item is already in the NON-CSE Master List.'}), 409
+    item.item_description = description
+    audit('non_cse_master_item', item.id, 'UPDATE')
     db.session.commit()
     return jsonify(item.to_dict())
 
