@@ -1054,6 +1054,11 @@ td.center{text-align:center}
   <section class="panel" id="panel-account-registration" aria-labelledby="account-registration-title">
     <div class="page-header">
       <div><h1 id="account-registration-title">Account Registration</h1><p>Create user accounts using the existing registration and approval process.</p></div>
+      <button class="btn btn-primary" id="active-accounts-toggle" type="button" aria-expanded="false" aria-controls="active-accounts-card" onclick="toggleActiveAccounts(this)">Active Account/s</button>
+    </div>
+    <div class="card" id="active-accounts-card" hidden>
+      <div class="card-header"><span class="card-title">Active Accounts</span><span class="text-xs text-muted" id="active-account-count">0 accounts</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Full Name</th><th>Username</th><th>Email</th><th>Office</th><th>Role</th><th>Created</th></tr></thead><tbody id="active-account-list"><tr><td colspan="6">Click Active Account/s to load accounts.</td></tr></tbody></table></div>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Create User Account</span></div>
@@ -2292,6 +2297,40 @@ async function loadPendingUsers() {
   } catch (error) {
     list.innerHTML = '<div class="approval-empty">Unable to load pending accounts. Please refresh.</div>';
     showToast('Unable to load pending accounts.', 'Account Approval', 'error');
+  }
+}
+
+async function toggleActiveAccounts(button) {
+  const card = document.getElementById('active-accounts-card');
+  if (!card) return;
+  if (!card.hidden) {
+    card.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  card.hidden = false;
+  button.disabled = true;
+  button.setAttribute('aria-expanded', 'true');
+  const body = document.getElementById('active-account-list');
+  const count = document.getElementById('active-account-count');
+  body.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading active accounts...</div></td></tr>';
+  count.textContent = 'Loading...';
+  try {
+    const data = await apiFetch(`${API}/admin/active-users`);
+    count.textContent = `${data.count} active account${data.count === 1 ? '' : 's'}`;
+    body.innerHTML = data.users.length
+      ? data.users.map(user => {
+          const created = user.created_at ? new Date(user.created_at).toLocaleDateString('en-PH') : '—';
+          return `<tr><td>${escapeHtml(user.full_name)}</td><td>${escapeHtml(UsernameFormat.format(user.username))}</td><td>${escapeHtml(user.email)}</td><td>${escapeHtml(user.office || '—')}</td><td>${escapeHtml(user.role || user.released_role || '—')}</td><td>${escapeHtml(created)}</td></tr>`;
+        }).join('')
+      : '<tr><td colspan="6">No active accounts found.</td></tr>';
+  } catch (error) {
+    count.textContent = 'Unable to load accounts';
+    body.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message || 'Could not load active accounts.')}</td></tr>`;
+    showToast(error.message || 'Could not load active accounts.', 'Active Accounts', 'error');
+  } finally {
+    button.disabled = false;
   }
 }
 
