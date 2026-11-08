@@ -1553,6 +1553,15 @@ def reset_password():
     return jsonify({'message': 'Password updated. You can now sign in using your new password.'})
 
 
+@app.route('/api/admin/active-users')
+@admin_required
+def active_users():
+    users = User.query.filter(
+        User.account_status == 'ACTIVE', User.is_active.is_(True)
+    ).order_by(User.office.asc(), User.full_name.asc(), User.id.asc()).all()
+    return jsonify({'users': [user.to_dict() for user in users], 'count': len(users)})
+
+
 @app.route("/api/admin/pending-users")
 @admin_required
 def pending_users():
