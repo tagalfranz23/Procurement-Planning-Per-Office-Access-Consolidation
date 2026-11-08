@@ -4210,16 +4210,16 @@ async function showPanel(id, el, reportQuery = null) {
     document.getElementById('ppmp-request-nav')?.classList.add('active');
   }
   if (id === 'non-cse-master-list' || id === 'non-cse-master-item') {
-    if (currentUser?.role === 'ADMIN') setNonCSEMasterMenuExpanded(true);
-    else setPPMPDashboardMenuExpanded(true);
+    if (currentUser?.role !== 'ADMIN') {
+      setPPMPDashboardMenuExpanded(true);
+      document.getElementById('ppmp-dashboard-nav')?.classList.add('active');
+    }
     document.getElementById('non-cse-master-nav')?.classList.add('active');
-    if (currentUser?.role !== 'ADMIN') document.getElementById('ppmp-dashboard-nav')?.classList.add('active');
   }
   if (id === 'dashboard' || id === 'ppmp-dashboard' || id === 'app-dashboard') {
     setAdminOverviewMenuExpanded(true);
   }
   if (id === 'ppmp-wishlist' || id === 'cse-add-item' || id === 'cse-user-add-item' || id === 'cse-selected-items') {
-    setCSEMasterMenuExpanded(true);
     if (id === 'cse-add-item' || id === 'cse-user-add-item' || id === 'cse-selected-items') document.getElementById('ppmp-master-nav')?.classList.add('active');
   }
 
