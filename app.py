@@ -4811,6 +4811,77 @@ def update_app_item(app_id, item_id):
     return jsonify(item.to_dict())
 
 
+@app.route('/api/apps/<int:app_id>/items/bulk', methods=['PUT'])
+@permission_required('app.edit')
+def bulk_update_app_items(app_id):
+    plan, user = AnnualProcurementPlan.query.filter_by(id=app_id).with_for_update().first(), current_session_user()
+    if plan is None:
+        return jsonify({'error': 'APP record not found.'}), 404
+    if not can_edit_app(user, plan):
+        return jsonify({'error': 'Only Admin may edit an APP while Draft or Returned.'}), 403
+    data = request.get_json(silent=True) or {}
+    rows = data.get('items')
+    if not isinstance(rows, list):
+        return jsonify({'error': 'Provide all APP table rows to save the changes.'}), 400
+    existing = {item.id: item for item in plan.items}
+    prepared_rows = []
+    seen_ids = set()
+    try:
+        for index, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                raise ValueError(f'APP row {index} is invalid.')
+            try:
+                item_id = int(row.get('id'))
+            except (TypeError, ValueError):
+                raise ValueError(f'APP row {index} has an invalid item ID.')
+            item = existing.get(item_id)
+            if item is None or item_id in seen_ids:
+                raise ValueError('The APP table changed. Refresh the APP before saving again.')
+            seen_ids.add(item_id)
+            if 'mode_of_procurement' in row:
+                db.session.rollback()
+                return jsonify({'error': 'Only BAC Chairman may set the APP Mode of Procurement during review.'}), 403
+            section = APPSection.query.filter_by(id=row.get('section_id', item.section_id), app_id=plan.id).first()
+            if section is None:
+                raise ValueError(f'APP row {index} has an invalid section.')
+            values = parse_app_item({**item.to_dict(), **row})
+            quantity = precise_number(row.get('quantity', item.quantity), 'Row quantity')
+            unit_size = str(row.get('unit_size', item.unit_size) or '').strip()
+            if len(unit_size) > 80:
+                raise ValueError(f'APP row {index} unit / size must not exceed 80 characters.')
+            if item.contributions and (
+                quantity != Decimal(item.quantity)
+                or values['estimated_budget'] != Decimal(item.estimated_budget)
+                or values['implementing_unit'] != item.implementing_unit
+                or unit_size != (item.unit_size or '')
+            ):
+                raise ValueError('Consolidated quantities, units, and budgets must be changed through Office Distributions.')
+            prepared_rows.append((item, section, values, quantity, unit_size))
+        if seen_ids != set(existing):
+            raise ValueError('Provide every APP row to save the table as one update.')
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({'error': str(error)}), 400
+
+    for item, section, values, quantity, unit_size in prepared_rows:
+        if (any(values[field] != getattr(item, field) for field in (
+                'project_title', 'general_description', 'procurement_start', 'procurement_end', 'source_of_fund',
+            )) or quantity != Decimal(item.quantity or 0) or unit_size != (item.unit_size or '')):
+            item.merge_key = None
+        for field, value in values.items():
+            setattr(item, field, value)
+        item.quantity = quantity
+        item.unit_size = unit_size or None
+        item.section_id = section.id
+    plan.revision = (plan.revision or 1) + 1
+    app_audit_snapshot(plan, 'APP_ITEMS_BULK_UPDATED', {
+        'item_ids': [item.id for item, *_ in prepared_rows],
+        'item_count': len(prepared_rows),
+    })
+    db.session.commit()
+    return jsonify(app_detail_dict(plan))
+
+
 @app.route('/api/apps/<int:app_id>/items/<int:item_id>/procurement-mode', methods=['PUT'])
 @roles_required('BAC CHAIRMAN')
 def set_app_procurement_mode(app_id, item_id):
