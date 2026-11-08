@@ -5471,7 +5471,7 @@ function renderAPPTable() {
   }
   rows.push(`<tr class="tfoot-row"><td colspan="9">TOTAL AMOUNT OF ESTIMATED BUDGET</td><td class="amount">₱${fmt(plan.totals.overall)}</td><td colspan="2"></td></tr>`);
   document.getElementById('app-digital-body').innerHTML = rows.length > 1 ? rows.join('') : '<tr><td colspan="12">This APP has no sections or items.</td></tr>';
-  if (isFinalAPP) {
+  if (isFinalAPP || Number(plan.workflow_version || 1) >= 2) {
     document.querySelectorAll('#app-digital-body tr:not(.app-section-row):not(.app-total-row):not(.tfoot-row) td:nth-child(2)').forEach(cell => {
       cell.textContent = 'ISU Cauayan Campus';
     });
