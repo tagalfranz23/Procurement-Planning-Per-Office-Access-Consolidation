@@ -859,11 +859,6 @@ td.center{text-align:center}
       <span class="icon">🏛️</span> Consolidation
     </div>
     {% endif %}
-    {% if is_admin %}
-    <div class="nav-item" id="account-registration-nav" data-panel="account-registration" onclick="showPanel('account-registration',this)">
-      <span class="icon" aria-hidden="true">&#43;</span> Account Registration
-    </div>
-    {% endif %}
     <div class="nav-item" id="app-nav" data-panel="apps" onclick="showPanel('apps',this)" hidden>
       <span class="icon"></span> APP Plans
       <button class="app-plans-submenu-toggle" id="app-plans-submenu-toggle" type="button" aria-label="Toggle APP Plans submenu" aria-expanded="false" aria-controls="app-plans-submenu" onclick="toggleAPPPlansMenu(event)"><span aria-hidden="true">&#9662;</span></button>
@@ -874,6 +869,11 @@ td.center{text-align:center}
     <div class="nav-item" id="reports-nav" data-panel="reports" onclick="showPanel('reports',this)" hidden>
       <span class="icon">📈</span> Reports
     </div>
+    {% if is_admin %}
+    <div class="nav-item" id="account-registration-nav" data-panel="account-registration" onclick="showPanel('account-registration',this)">
+      <span class="icon" aria-hidden="true">&#43;</span> Account Registration
+    </div>
+    {% endif %}
     <div class="nav-item" id="activity-log-nav" data-panel="activity-log" onclick="showPanel('activity-log',this)">
       Activity Log
       {% if is_admin %}
