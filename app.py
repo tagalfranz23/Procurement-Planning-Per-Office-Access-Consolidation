@@ -5106,7 +5106,7 @@ def export_app_pdf(app_id):
         rows.append([cell(section.name)] + [''] * 11)
         for item in section.items:
             rows.append([
-                cell(export_project_title(item)), cell('ISU Cauayan Campus' if plan.status == 'Finalized' else export_office_contributions(item)), cell(item.general_description),
+                cell(export_project_title(item)), cell('ISU Cauayan Campus' if (plan.status == 'Finalized' or plan.workflow_version >= 2) else export_office_contributions(item)), cell(item.general_description),
                 cell(item.mode_of_procurement), cell('Yes' if item.early_procurement_activity else 'No'
                                                      if item.early_procurement_activity is False else ''),
                 cell(item.bid_evaluation_criteria), cell(APPItem.month_label(item.procurement_start)),
@@ -5215,7 +5215,7 @@ def export_app_excel(app_id):
         worksheet.cell(section_row, 1).font = Font(bold=True)
         for item in section.items:
             worksheet.append([
-                export_project_title(item), 'ISU Cauayan Campus' if plan.status == 'Finalized' else export_office_contributions(item), item.general_description,
+                export_project_title(item), 'ISU Cauayan Campus' if (plan.status == 'Finalized' or plan.workflow_version >= 2) else export_office_contributions(item), item.general_description,
                 item.mode_of_procurement,
                 'Yes' if item.early_procurement_activity else 'No' if item.early_procurement_activity is False else '',
                 item.bid_evaluation_criteria, APPItem.month_label(item.procurement_start),
