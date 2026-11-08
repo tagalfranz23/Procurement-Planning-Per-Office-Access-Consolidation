@@ -2498,7 +2498,9 @@ def wishlist():
             ))
         if status in WishlistItem.STATUSES:
             query = query.filter_by(status=status)
-        return jsonify([item.to_dict() for item in query.order_by(WishlistItem.id.desc())])
+        return jsonify([item.to_dict() for item in query.order_by(
+            db.func.lower(WishlistItem.item_description), WishlistItem.item_description
+        )])
     user = current_session_user()
     if user.role != 'ADMIN':
         return jsonify({"error": "Only the administrator can add CSE Master List items."}), 403
@@ -2578,7 +2580,9 @@ def non_cse_master_list():
         if search:
             query = query.filter(NonCSEMasterItem.item_description.ilike(f'%{search}%'))
         return jsonify([
-            item.to_dict() for item in query.order_by(NonCSEMasterItem.id.asc()).all()
+            item.to_dict() for item in query.order_by(
+                db.func.lower(NonCSEMasterItem.item_description), NonCSEMasterItem.item_description
+            ).all()
         ])
 
     user = current_session_user()
