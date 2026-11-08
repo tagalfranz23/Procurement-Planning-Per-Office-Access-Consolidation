@@ -168,6 +168,12 @@ body.sidebar-collapsed .sidebar{transform:translateX(calc(-1 * var(--sidebar-w))
 .activity-log-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
 .activity-log-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
 .activity-log-submenu .nav-item:hover,.activity-log-submenu .nav-item.active{background:var(--sky)}
+.app-plans-submenu-toggle{margin-left:auto;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;flex-shrink:0}
+.app-plans-submenu-toggle:hover,.app-plans-submenu-toggle:focus-visible{background:rgba(37,99,235,.12)}
+.app-plans-submenu-toggle span{transition:transform .15s}
+.app-plans-submenu-toggle[aria-expanded="true"] span{transform:rotate(180deg)}
+.app-plans-submenu .nav-item{width:calc(100% - 40px);margin-left:32px;margin-right:8px;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.4}
+.app-plans-submenu .nav-item:hover,.app-plans-submenu .nav-item.active{background:var(--sky)}
 #ppmp-request-records-card,#ppmp-request-report-detail{scroll-margin-top:calc(var(--header-h) + 16px)}
 .nav-badge{margin-left:auto;background:var(--blue);color:white;
   font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
@@ -859,6 +865,10 @@ td.center{text-align:center}
     {% endif %}
     <div class="nav-item" id="app-nav" data-panel="apps" onclick="showPanel('apps',this)" hidden>
       <span class="icon"></span> APP Plans
+      <button class="app-plans-submenu-toggle" id="app-plans-submenu-toggle" type="button" aria-label="Toggle APP Plans submenu" aria-expanded="false" aria-controls="app-plans-submenu" onclick="toggleAPPPlansMenu(event)"><span aria-hidden="true">&#9662;</span></button>
+    </div>
+    <div class="app-plans-submenu" id="app-plans-submenu" hidden>
+      <button class="nav-item" id="app-records-nav" type="button" data-panel="apps" onclick="showPanel('apps',this)" hidden>APP Records</button>
     </div>
     <div class="nav-item" id="reports-nav" data-panel="reports" onclick="showPanel('reports',this)" hidden>
       <span class="icon">📈</span> Reports
@@ -2131,6 +2141,8 @@ async function loadCurrentUser() {
   setHidden('ppmp-request-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.order.view'));
   setHidden('consolidation-nav', currentUser.role !== 'ADMIN' || !allowed('ppmp.consolidate'));
   document.getElementById('app-nav').hidden = !allowed('app.view');
+  setHidden('app-records-nav', !allowed('app.view'));
+  setHidden('app-plans-submenu-toggle', !allowed('app.view'));
   document.getElementById('reports-nav').hidden = !allowed('ppmp.report');
   document.querySelectorAll('[data-permission]').forEach(element => {
     element.hidden = !allowed(element.dataset.permission);
@@ -4161,6 +4173,22 @@ function toggleActivityLogMenu(event) {
   if (submenu) setActivityLogMenuExpanded(submenu.hidden);
 }
 
+function setAPPPlansMenuExpanded(expanded) {
+  const submenu = document.getElementById('app-plans-submenu');
+  const toggle = document.getElementById('app-plans-submenu-toggle');
+  if (!submenu || !toggle || !hasClientPermission('app.view')) return;
+  const isExpanded = Boolean(expanded);
+  submenu.hidden = !isExpanded;
+  toggle.setAttribute('aria-expanded', String(isExpanded));
+}
+
+function toggleAPPPlansMenu(event) {
+  event.stopPropagation();
+  if (!currentUser || !hasClientPermission('app.view')) return;
+  const submenu = document.getElementById('app-plans-submenu');
+  if (submenu) setAPPPlansMenuExpanded(submenu.hidden);
+}
+
 async function openCSEMasterItemForm() {
   if (currentUser?.role !== 'ADMIN') return;
   if (await showPanel('cse-add-item') === false) return;
@@ -4204,6 +4232,10 @@ async function showPanel(id, el, reportQuery = null) {
   document.getElementById(`panel-${id}`)?.classList.add('active');
   const navEl = el || document.querySelector(`[data-panel="${id}"]`);
   if (navEl) navEl.classList.add('active');
+  if (id === 'apps') {
+    document.getElementById('app-nav')?.classList.add('active');
+    if (navEl?.id === 'app-records-nav') setAPPPlansMenuExpanded(true);
+  }
   if (id === 'ppmp-request-document' && ppmpReportReturnPanel === 'ppmp-approved') document.getElementById('ppmp-approved-nav')?.classList.add('active');
   if (id === 'ppmp-requests' || id === 'ppmp-request-records') {
     document.getElementById('ppmp-request-nav')?.classList.add('active');
@@ -5369,6 +5401,9 @@ async function openAPP(id, showLoading=false) {
   selectedAPPRecord = await apiFetch(`${API}/apps/${id}`, {showLoading, loadingMessage:'Loading the 12-column APP table…'});
   renderAPPWorkspace();
   document.getElementById('app-record-workspace').hidden = false;
+  setAPPPlansMenuExpanded(true);
+  document.getElementById('app-nav')?.classList.add('active');
+  document.getElementById('app-records-nav')?.classList.add('active');
   document.getElementById('app-record-workspace').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
