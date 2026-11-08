@@ -485,6 +485,7 @@ td.center{text-align:center}
 /* ── LOADING ──────────────────────────────────── */
 .loading{display:flex;align-items:center;justify-content:center;padding:40px;gap:10px;color:var(--gray-500)}
 .spinner{width:22px;height:22px;border:2.5px solid var(--gray-200);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+.refresh-button-spinner{display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── RESPONSIVE ──────────────────────────────── */
@@ -920,7 +921,7 @@ td.center{text-align:center}
   <!-- ══ ADMIN OVERVIEW ═════════════════════════════ -->
   {% if is_admin %}
   <section class="panel active" id="panel-dashboard">
-    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><div class="action-row"><button class="btn btn-primary" onclick="showPanel('ppmp-wishlist')">Open PPMP Items</button><button class="btn btn-primary" onclick="loadAdminOverview()">Refresh</button></div></div>
+    <div class="page-header"><div><div class="section-kicker">Administration</div><h1>Admin Dashboard</h1><p>System oversight with separate PPMP and APP workspaces.</p></div><div class="action-row"><button class="btn btn-primary" onclick="showPanel('ppmp-wishlist')">Open PPMP Items</button><button class="btn btn-primary" onclick="runRefresh(this,()=>loadAdminOverview())">Refresh</button></div></div>
     <div class="workspace-grid">
       <article class="workspace-card" onclick="showPanel('ppmp-dashboard')"><div class="section-kicker">PPMP Workspace</div><h2>PPMP Dashboard</h2><p>Submitted office requests, reviews, wishlist items, and procurement readiness.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-ppmp-total">0</strong><span>PPMP Records</span></div><div class="workspace-metric"><strong id="admin-ppmp-actions">0</strong><span>Pending Actions</span></div></div></article>
       <article class="workspace-card" onclick="showPanel('app-dashboard')"><div class="section-kicker">APP Workspace</div><h2>APP Dashboard</h2><p>APP drafts, review stages, APP-CSE, final approvals, and consolidation sources.</p><div class="workspace-metrics"><div class="workspace-metric"><strong id="admin-app-total">0</strong><span>APP Plans</span></div><div class="workspace-metric"><strong id="admin-app-actions">0</strong><span>For Approval</span></div></div></article>
@@ -1015,7 +1016,7 @@ td.center{text-align:center}
 
   <!-- ══ PPMP LIST ══════════════════════════════════ -->
   <section class="panel" id="panel-ppmp-requests">
-    <div class="page-header"><div><h1>PPMP Records &amp; Wishlist Requests</h1><p>Review PPMP documents separately from actual Wishlist requests and items.</p></div><button class="btn btn-primary" type="button" onclick="loadPPMPRequests()">Refresh</button></div>
+    <div class="page-header"><div><h1>PPMP Records &amp; Wishlist Requests</h1><p>Review PPMP documents separately from actual Wishlist requests and items.</p></div><button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadPPMPRequests())">Refresh</button></div>
     <div class="card" data-permission="ppmp.request.create" id="submission-request-create-card">
       <div class="card-header"><span class="card-title">Request a PPMP from an Office</span></div>
       <div class="card-body"><div class="filter-row">
@@ -1030,7 +1031,7 @@ td.center{text-align:center}
   </section>
 
   <section class="panel" id="panel-apps">
-    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>The Admin consolidates selected approved Final PPMP No. 1 records by fiscal year into one institution-wide APP.</p></div><button class="btn btn-primary" type="button" onclick="loadApps()">Refresh</button></div>
+    <div class="page-header"><div><div class="section-kicker">Official Digital APP</div><h1>Annual Procurement Plan</h1><p>The Admin consolidates selected approved Final PPMP No. 1 records by fiscal year into one institution-wide APP.</p></div><button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadApps())">Refresh</button></div>
     <div class="card" id="app-create-card" data-permission="app.create"><div class="card-header"><span class="card-title">APP Workflow</span></div><div class="card-body"><div class="app-create-note">Admin selects approved Final PPMP No. 1 records by fiscal year, consolidates the selected submissions into one APP, then submits the APP to the BAC Chairman for review.</div></div></div>
     <div class="card"><div class="card-header"><span class="card-title">APP Records</span><span class="text-xs text-muted">Admin and authorized APP roles inspect the same records</span></div><div class="table-wrap"><table><thead><tr><th>Office</th><th>Fiscal Year</th><th>Type</th><th>Sections</th><th>Items</th><th>Total Budget</th><th>Status</th><th>Next Reviewer</th><th>Actions</th></tr></thead><tbody id="app-list"><tr><td colspan="9">Loading APP records…</td></tr></tbody></table></div></div>
       </section>
@@ -1073,7 +1074,7 @@ td.center{text-align:center}
       </div>
     </div>
     <div class="card">
-      <div class="card-header"><span class="card-title">Pending Account Registrations</span><div class="flex gap-8"><span class="nav-badge approval-badge" id="pending-user-count">0</span><button class="btn btn-primary" type="button" onclick="refreshAccountAdministration()">Refresh</button></div></div>
+      <div class="card-header"><span class="card-title">Pending Account Registrations</span><div class="flex gap-8"><span class="nav-badge approval-badge" id="pending-user-count">0</span><button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>refreshAccountAdministration())">Refresh</button></div></div>
       <div class="card-body"><div class="approval-list" id="pending-user-list"><div class="loading"><div class="spinner"></div>Loading accounts...</div></div></div>
     </div>
     <div class="card">
@@ -1112,7 +1113,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-planning">
     <div class="page-header">
       <div><h1>PPMP Planning Documents</h1><p>Saved Indicative copies and other PPMP records are listed here. Drafts are in PPMP Draft, and submitted Indicative PPMPs are in Submitted PPMP.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadPPMPPlanning()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadPPMPPlanning())">Refresh</button>
     </div>
 
     <div class="card" data-permission="ppmp.record.create" id="ppmp-record-create-card" hidden>
@@ -1188,7 +1189,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-draft">
     <div class="page-header">
       <div><h1>PPMP Draft</h1><p>Official Indicative PPMP No. 1 drafts for your office or college.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadPPMPDrafts()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadPPMPDrafts())">Refresh</button>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Official Indicative PPMP No. 1 - Draft</span></div>
@@ -1199,7 +1200,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-submitted">
     <div class="page-header">
       <div><h1>Submitted PPMP</h1><p>Official Indicative PPMP No. 1 records submitted by your office or college for Admin review.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadSubmittedPPMP()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadSubmittedPPMP())">Refresh</button>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Submitted Indicative PPMP No. 1</span></div>
@@ -1211,7 +1212,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-final">
     <div class="page-header">
       <div><h1>Final PPMP</h1><p>Final PPMP No. 1 records for offices and colleges available to your account.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadFinalPPMP()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadFinalPPMP())">Refresh</button>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Final PPMP Records</span></div>
@@ -1223,7 +1224,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-ppmp-approved">
     <div class="page-header">
       <div><h1>Approved PPMP</h1><p>Admin-approved Indicative PPMPs waiting for you to prepare and submit Final PPMP No. 1.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadApprovedPPMP()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadApprovedPPMP())">Refresh</button>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">PPMPs Awaiting Finalization</span></div>
@@ -1346,7 +1347,7 @@ td.center{text-align:center}
         <h1>NON-CSE Master List</h1>
         <p>Catalog of non-CSE procurement project descriptions.</p>
       </div>
-      <button class="btn btn-primary" type="button" onclick="loadNonCSEMasterList(true)">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadNonCSEMasterList(true))">Refresh</button>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">NON-CSE Master List Items</span></div>
@@ -1389,7 +1390,7 @@ td.center{text-align:center}
         <span class="card-title">Final PPMP Submission Readiness</span>
         <div class="management-actions">
           <button class="btn btn-primary btn-sm" id="consolidate-selected-ppmps-button" type="button" onclick="consolidateFinalPPMPs(this)" disabled>Consolidate</button>
-          <button class="btn btn-primary btn-sm" type="button" onclick="renderConsolidation()">Refresh</button>
+          <button class="btn btn-primary btn-sm" type="button" onclick="runRefresh(this,()=>renderConsolidation())">Refresh</button>
         </div>
       </div>
       <div class="card-body">
@@ -1411,7 +1412,7 @@ td.center{text-align:center}
   <section class="panel" id="panel-reports">
     <div class="page-header">
       <div><h1>REPORTS</h1><p>Review and generate PPMP reports using only records authorized for your account.</p></div>
-      <button class="btn btn-primary" type="button" onclick="loadOrderReports()">Refresh</button>
+      <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadOrderReports())">Refresh</button>
     </div>
     {% if is_admin %}
     <div class="card">
@@ -2055,6 +2056,34 @@ function wsBroadcast(action, item, college) {
 // ─────────────────────────────────────────────
 // DATA LOADING
 // ─────────────────────────────────────────────
+async function runRefresh(button, refreshAction) {
+  if (!button || button.disabled || button.dataset.refreshing === 'true') return false;
+  const originalMarkup = button.innerHTML;
+  const startedAt = Date.now();
+  button.disabled = true;
+  button.dataset.refreshing = 'true';
+  button.setAttribute('aria-busy', 'true');
+  button.innerHTML = '<span class="refresh-button-spinner" aria-hidden="true"></span>Refreshing...';
+  try {
+    const [result] = await Promise.allSettled([
+      Promise.resolve().then(refreshAction),
+      new Promise(resolve => setTimeout(resolve, 1000))
+    ]);
+    if (result.status === 'rejected') {
+      showToast(result.reason?.message || 'Could not refresh the data.', 'Refresh', 'error');
+      return false;
+    }
+    return result.value;
+  } finally {
+    const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+    if (remaining) await new Promise(resolve => setTimeout(resolve, remaining));
+    button.innerHTML = originalMarkup;
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    delete button.dataset.refreshing;
+  }
+}
+
 async function apiFetch(url, opts = {}) {
   const requestMethod = String(opts.method || 'GET').toUpperCase();
   const { loadingMessage = 'Processing request...', showLoading = requestMethod !== 'GET', ...fetchOptions } = opts;
