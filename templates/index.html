@@ -1345,14 +1345,14 @@ td.center{text-align:center}
   <section class="panel" id="panel-non-cse-master-item">
     <div class="page-header">
       <div><h1>Add/Edit Item to NON-CSE Master List</h1></div>
-      <div class="action-row"><button class="btn btn-primary" type="button" onclick="leaveNonCSEMasterItemForm()">Back to NON-CSE Master List</button></div>
+      <div class="action-row"><button class="btn btn-primary" type="button" onclick="leaveNonCSEMasterItemForm()">Back to NON-CSE Master list</button></div>
     </div>
     <div class="card" id="non-cse-master-form-card">
-      <div class="card-header"><div><span class="card-title" id="non-cse-master-form-title">Add Item to NON-CSE Master List</span><div class="text-xs text-muted">Administrator-only catalog maintenance.</div></div></div>
+      <div class="card-header"><div><span class="card-title" id="non-cse-master-form-title">Add Item to NON-CSE Master List</span><div class="text-xs text-muted">Administrator-only catalog maintenance. Office users can add these items to their PPMP but cannot change the catalog.</div></div></div>
       <div class="card-body">
         <div class="filter-row">
-          <input class="filter-input" id="non-cse-master-description" maxlength="3000" placeholder="NON-CSE item description">
-          <button class="btn btn-primary" id="non-cse-master-save-button" type="button" onclick="saveNonCSEMasterItem(this)">Add Item</button>
+          <input class="filter-input" id="non-cse-master-description" maxlength="3000" placeholder="Item description">
+          <button class="btn btn-primary" id="non-cse-master-save-button" type="button" onclick="saveNonCSEMasterItem(this)">Add to NON-CSE Master List</button>
           <button class="btn btn-ghost" id="non-cse-master-cancel-button" type="button" onclick="resetNonCSEMasterItemForm()" hidden>Cancel Edit</button>
         </div>
       </div>
@@ -4389,7 +4389,7 @@ function resetNonCSEMasterItemForm() {
   const cancel = document.getElementById('non-cse-master-cancel-button');
   if (description) description.value = '';
   if (title) title.textContent = 'Add Item to NON-CSE Master List';
-  if (save) save.textContent = 'Add Item';
+  if (save) save.textContent = 'Add to NON-CSE Master List';
   if (cancel) cancel.hidden = true;
 }
 
