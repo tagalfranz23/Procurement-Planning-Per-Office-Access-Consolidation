@@ -4374,7 +4374,7 @@ def final_ppmp_readiness(fiscal_year):
             'order_id': order.id if order else None,
             'reference_number': order.reference_number if order else None,
             'status': order.status if order else 'Not Started',
-            'stage': stage_labels.get(order.status, order.status) if order else 'PPMP not submitted',
+            'stage': stage_labels.get(order.status, order.status) if order else 'No PPMP submitted',
             'ppmp_document_number': order.ppmp_document_number if order else None,
             'ppmp_type': ('Final' if order.ppmp_document_number == 2 else 'Indicative') if order else None,
             'item_count': len(order.items) if order else 0,
