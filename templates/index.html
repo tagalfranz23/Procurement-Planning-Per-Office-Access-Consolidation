@@ -1693,7 +1693,7 @@ td.center{text-align:center}
   </div>
 </div>
 
-<div class="modal-overlay" id="app-contribution-modal" role="dialog" aria-modal="true" aria-labelledby="app-contribution-title"><div class="modal app-modal"><div class="modal-header"><div class="modal-title" id="app-contribution-title">Office Distributions</div><button class="modal-close" type="button" onclick="closeAPPContributions()" aria-label="Close">&#10005;</button></div><div class="modal-body"><p class="text-xs text-muted">Original approved PPMP values remain locked. Revised APP contributions must add up to the APP item totals.</p><div class="table-wrap"><table><thead><tr><th>Office / College</th><th>Original Quantity</th><th>Original Budget</th><th>APP Quantity</th><th>APP Budget</th></tr></thead><tbody id="app-contribution-list"></tbody><tfoot><tr><td colspan="3">REVISED APP TOTAL</td><td id="app-contribution-quantity"></td><td id="app-contribution-budget"></td></tr></tfoot></table></div><div class="form-group mt-12" id="app-contribution-note-group"><label class="form-label" for="app-contribution-note">Office feedback / reason for revision</label><textarea class="form-control" id="app-contribution-note" maxlength="5000" rows="3"></textarea></div></div><div class="modal-footer"><button class="btn btn-ghost" type="button" onclick="closeAPPContributions()">Close</button><button class="btn btn-primary" type="button" id="app-contribution-save" onclick="saveAPPContributions(this)">Save Contributions</button></div></div></div>
+<div class="modal-overlay" id="app-contribution-modal" role="dialog" aria-modal="true" aria-labelledby="app-contribution-title"><div class="modal app-modal"><div class="modal-header"><div class="modal-title" id="app-contribution-title">Office Distributions</div><button class="modal-close" type="button" onclick="closeAPPContributions()" aria-label="Close">&#10005;</button></div><div class="modal-body"><p class="text-xs text-muted">Original approved PPMP values remain locked. Revised APP contributions must add up to the APP item totals.</p><div class="table-wrap"><table><thead><tr><th>Office / College</th><th>Original Quantity</th><th>Original Budget</th><th>APP Quantity</th><th>APP Budget</th></tr></thead><tbody id="app-contribution-list"></tbody><tfoot><tr><td colspan="3">REVISED APP TOTAL</td><td id="app-contribution-quantity"></td><td id="app-contribution-budget"></td></tr></tfoot></table></div></div><div class="modal-footer"><button class="btn btn-ghost" type="button" onclick="closeAPPContributions()">Close</button><button class="btn btn-primary" type="button" id="app-contribution-save" onclick="saveAPPContributions(this)">Save Contributions</button></div></div></div>
 
 <div class="modal-overlay" id="ppmp-copy-reuse-modal" role="dialog" aria-modal="true" aria-labelledby="ppmp-copy-reuse-title">
   <div class="modal">
@@ -5529,8 +5529,6 @@ function openAPPContributions(itemId) {
   document.getElementById('app-contribution-title').textContent = `Office Distributions - ${item.project_title}`;
   document.getElementById('app-contribution-list').innerHTML = (item.contributions || []).map(row => `<tr data-contribution-id="${row.id}"><td>${escapeHtml(row.office_code || row.office_name || '')}</td><td>${fmtNum(row.original_quantity)}</td><td class="amount">&#8369; ${fmt(row.original_budget)}</td><td><input class="form-control" data-contribution-field="quantity" type="number" min="0.01" step="0.01" value="${escapeHtml(String(row.quantity))}" aria-label="APP quantity for ${escapeHtml(row.office_code || row.office_name)}" oninput="updateAPPContributionTotals()"${editable ? '' : ' disabled'}></td><td><input class="form-control" data-contribution-field="budget" type="number" min="0" step="0.01" value="${escapeHtml(String(row.estimated_budget))}" aria-label="APP budget for ${escapeHtml(row.office_code || row.office_name)}" oninput="updateAPPContributionTotals()"${editable ? '' : ' disabled'}></td></tr>`).join('');
   document.getElementById('app-contribution-save').hidden = !editable;
-  document.getElementById('app-contribution-note-group').hidden = !editable;
-  document.getElementById('app-contribution-note').value = '';
   updateAPPContributionTotals();
   document.getElementById('app-contribution-modal').classList.add('open');
 }
@@ -5559,7 +5557,7 @@ async function saveAPPContributions(button) {
   const budgetCents = contributions.reduce((sum,row) => sum + Math.round(Number(row.budget) * 100), 0);
   button.disabled = true;
   try {
-    await apiFetch(`${API}/apps/${selectedAPPId}/items/${editingAPPContributionItemId}/contributions`, { method: 'PUT', body: JSON.stringify({ contributions, quantity: (quantityHundredths / 100).toFixed(2), budget: (budgetCents / 100).toFixed(2), note: document.getElementById('app-contribution-note').value }), loadingMessage: 'Saving office allocations...' });
+    await apiFetch(`${API}/apps/${selectedAPPId}/items/${editingAPPContributionItemId}/contributions`, { method: 'PUT', body: JSON.stringify({ contributions, quantity: (quantityHundredths / 100).toFixed(2), budget: (budgetCents / 100).toFixed(2) }), loadingMessage: 'Saving office allocations...' });
     closeAPPContributions();
     await loadApps();
     showToast('Office Distributions and APP totals saved.', 'APP Contributions', 'success');
