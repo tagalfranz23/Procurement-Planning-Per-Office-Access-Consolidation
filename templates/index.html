@@ -1796,6 +1796,12 @@ let pendingPPMPRecordId = null;
 let ppmpPlanningLoadRequest = 0;
 const deletingPPMPRecordIds = new Set();
 const deletedPPMPRecordReferences = new Set();
+const hiddenPPMPPlanningLegacyReferences = new Set([
+  'LEGACY-PPMP-5-2029',
+  'LEGACY-PPMP-5-2028',
+  'LEGACY-PPMP-5-2027',
+  'LEGACY-PPMP-5-2026',
+]);
 let appPlans = [];
 let appMetadata = {};
 let selectedAPPId = null;
@@ -4915,7 +4921,9 @@ async function saveWishlistOrderComment(button) {
 }
 
 function renderPPMPRecordList() {
-  const records = ppmpRecords.filter(record => !deletedPPMPRecordReferences.has(record.reference_number));
+  const records = ppmpRecords.filter(record =>
+    !deletedPPMPRecordReferences.has(record.reference_number)
+    && !hiddenPPMPPlanningLegacyReferences.has(record.reference_number));
   const body = document.getElementById('ppmp-record-list');
   const reuseButton = document.getElementById('ppmp-copy-reuse-button');
   if (reuseButton) reuseButton.disabled = creatingPPMPFromIndicativeCopy;
