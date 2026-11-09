@@ -1352,7 +1352,11 @@ td.center{text-align:center}
         <h1>NON-CSE Master List</h1>
         <p>Catalog of non-CSE procurement project descriptions.</p>
       </div>
+      {% if is_admin %}
+      <button class="btn btn-primary" type="button" onclick="openNonCSEMasterItemManager()">Add Item</button>
+      {% else %}
       <button class="btn btn-primary" type="button" onclick="runRefresh(this,()=>loadNonCSEMasterList(true))">Refresh</button>
+      {% endif %}
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">NON-CSE Master List Items</span></div>
@@ -4271,6 +4275,7 @@ async function openCSEMasterItemForm() {
 async function openNonCSEMasterItemManager(navEl = document.getElementById('non-cse-add-item-nav')) {
   if (currentUser?.role !== 'ADMIN') return;
   try {
+    setNonCSEMasterMenuExpanded(true);
     if (await showPanel('non-cse-master-item', navEl) === false) return;
     resetNonCSEMasterItemForm();
     document.getElementById('non-cse-master-form-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
