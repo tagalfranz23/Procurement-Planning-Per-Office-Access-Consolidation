@@ -4574,7 +4574,7 @@ async function loadDashboardWishlist(showLoading = false) {
     const action = currentUser.role === 'ADMIN'
       ? '<button class="btn btn-ghost btn-sm" type="button" onclick="showPanel(\'ppmp-wishlist\')">Manage in CSE Master List</button>'
       : alreadyInReport ? '<span class="text-xs text-muted">Already in this PPMP draft</span>'
-        : `<div class="management-actions"><input class="filter-input" id="dashboard-master-quantity-${item.id}" type="number" min="0.01" step="0.01" value="1" aria-label="Quantity for ${escapeHtml(item.item_description)}" style="min-width:76px;width:76px"><button class="btn btn-primary btn-sm" type="button" onclick="addMasterOrderItem(${item.id},this,'dashboard-master-quantity-${item.id}')">${addingToReport ? 'Add to PPMP Draft' : 'Add to Current PPMP Items'}</button></div>`;
+        : `<div class="management-actions"><input class="filter-input" id="dashboard-master-quantity-${item.id}" type="number" min="0.01" step="0.01" value="1" aria-label="Quantity for ${escapeHtml(item.item_description)}" style="min-width:76px;width:76px"><button class="btn btn-primary btn-sm" type="button" onclick="addMasterOrderItem(${item.id},this,'dashboard-master-quantity-${item.id}')">${addingToReport ? 'Add to PPMP Draft' : 'Add Item'}</button></div>`;
     return `<tr><td><strong>${escapeHtml(item.item_description)}</strong></td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.unit)}</td><td class="amount">₱ ${fmt(item.estimated_cost)}</td><td>${action}</td></tr>`;
   }).join('') : '<tr><td colspan="5">No CSE Master List items match this search.</td></tr>';
 }
