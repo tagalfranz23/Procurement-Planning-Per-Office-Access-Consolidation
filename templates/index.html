@@ -987,7 +987,7 @@ td.center{text-align:center}
     </div>
     {% if not is_admin %}
     <div class="card" id="dashboard-cse-master-list-card">
-      <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted" id="dashboard-current-order-note"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-primary btn-sm" id="dashboard-review-order-items-button" type="button" onclick="showPanel('cse-selected-items')">Review Selected Items</button></div>{% endif %}</div>
+      <div class="card-header"><div><span class="card-title">CSE Master List</span><div class="text-xs text-muted" id="dashboard-current-order-note"><span id="dashboard-order-count">0</span> item(s) currently selected in Current PPMP Items</div></div>{% if not is_admin %}<div class="management-actions"><button class="btn btn-primary btn-sm" id="dashboard-review-order-items-button" type="button" onclick="showPanel('cse-selected-items')">View Selected Items</button></div>{% endif %}</div>
       <div class="card-body"><div class="filter-row"><input class="filter-input" id="dashboard-wishlist-search" placeholder="Search item name, category, unit, or office…" oninput="queueDashboardWishlistSearch()"></div></div>
       <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Estimated Unit Cost</th><th>Quantity</th></tr></thead><tbody id="dashboard-wishlist-list"><tr><td colspan="5">No CSE Master List items available.</td></tr></tbody></table></div>
     </div>
