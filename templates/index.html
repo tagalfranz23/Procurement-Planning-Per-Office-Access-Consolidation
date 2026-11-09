@@ -3089,7 +3089,7 @@ function renderPPMPRequestReport(report) {
   document.getElementById('ppmp-request-report-detail').hidden = false;
   updatePPMPReportEditingControls();
   document.getElementById('ppmp-office-feedback').hidden = true;
-  if (!indicative && report.is_official && report.may_provide_app_feedback) loadPPMPAppFeedback(report);
+  if (currentUser?.role === 'ADMIN' && !indicative && report.is_official && report.may_provide_app_feedback) loadPPMPAppFeedback(report);
 }
 
 function ppmpReportReviewActions(report) {
@@ -3197,6 +3197,12 @@ async function createIndicativeCopyFromReport(button) {
 
 async function loadPPMPAppFeedback(report) {
   const container = document.getElementById('ppmp-office-feedback');
+  if (!container) return;
+  if (currentUser?.role !== 'ADMIN') {
+    container.hidden = true;
+    container.replaceChildren();
+    return;
+  }
   try {
     const result = await apiFetch(`${API}/ppmp-orders/${report.id}/app-feedback`, { showLoading: false });
     if (selectedPPMPRequestReport !== report) return;
