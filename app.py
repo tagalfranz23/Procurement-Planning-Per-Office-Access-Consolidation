@@ -3280,18 +3280,13 @@ def scoped_ppmp_report_orders(user):
             query = query.filter_by(fiscal_year=report.fiscal_year)
     else:
         office_id = request.args.get('office_id', type=int)
-        if is_ppmp_office_role(user.role):
+        if is_ppmp_office_role(user.role) or user.role == 'PROCUREMENT':
             if not user.college_id:
                 query = query.filter(text('1 = 0'))
             elif office_id and office_id != user.college_id:
                 return None, None, (jsonify({'error': 'You cannot access another office report.'}), 403)
             else:
                 query = query.filter_by(office_id=user.college_id)
-        elif user.role == 'PROCUREMENT':
-            query = query.filter(or_(
-                PPMPOrder.office_id == user.college_id,
-                PPMPOrder.workflow_official.is_(False),
-            ))
         elif office_id:
             query = query.filter_by(office_id=office_id)
         fiscal_year = request.args.get('fiscal_year', type=int)
